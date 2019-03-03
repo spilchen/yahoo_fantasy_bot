@@ -32,7 +32,7 @@ description:
 # In the commands section, list your runnable scripts, notebooks, and other code.
 # Use `anaconda-project add-command` to add commands.
 #
-commands: {}
+commands: {notebook: {notebook: ipynb/hr_projection.ipynb, env_spec: default}}
 
 
 
@@ -75,7 +75,7 @@ packages:
 - pandas
 - numpy
 - pip:
-    - pybaseball
+  - pybaseball
 #
 # In the channels section, list any Conda channel URLs to be searched
 # for packages.
