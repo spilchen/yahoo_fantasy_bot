@@ -4,7 +4,8 @@ from pybaseball import batting_stats_range
 import pandas as pd
 
 
-def build_dataset(date_ranges, predict_category, min_PA=None):
+def build_dataset(date_ranges, predict_category, min_PA=None,
+                  generator=batting_stats_range):
     '''Build the dataset used for hitting predictions
 
     Args:
@@ -22,12 +23,15 @@ def build_dataset(date_ranges, predict_category, min_PA=None):
       min_PA (int) If set, we will filter out rows that doesn't exceed
         this minimum plate appearances
 
+      generator (functor) Data generation source.  Use the default, unless
+        you are adding dependency injection for testing purposes
+
     Returns:
       DataFrame: The dataset of k columns.  The first k-1 columns will be
         the input values and the kth column is the predicted value.
 
     Examples:
-      df = build_hitting_dataset([['2016-01-01', '2016-12-31'],
+      df = hitting.build_dataset([['2016-01-01', '2016-12-31'],
                                   ['2017-01-01', '2017-12-31']],
                                  'HR')
     '''
@@ -38,7 +42,7 @@ def build_dataset(date_ranges, predict_category, min_PA=None):
     input_data = None
 
     for i, dr in zip(range(len(input_ranges)), input_ranges):
-        data = _transform(batting_stats_range(dr[0], dr[1]), min_PA=min_PA)
+        data = _transform(generator(dr[0], dr[1]), min_PA=min_PA)
         # We're going to join each of the input sets together, so we need
         # to change the column name to avoid collision.
         data.rename(lambda x: "{}_P{}".format(x, i) if x != "Name" else x,
@@ -49,7 +53,7 @@ def build_dataset(date_ranges, predict_category, min_PA=None):
             input_data = pd.merge(input_data, data, on='Name')
 
     predict_full_data = _transform(
-        batting_stats_range(predict_range[0], predict_range[1]), min_PA=min_PA)
+        generator(predict_range[0], predict_range[1]), min_PA=min_PA)
     predict_data = pd.DataFrame()
     predict_data['Name'] = predict_full_data['Name']
     predict_data[predict_category] = predict_full_data[predict_category]

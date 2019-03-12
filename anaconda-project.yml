@@ -32,8 +32,8 @@ description:
 # In the commands section, list your runnable scripts, notebooks, and other code.
 # Use `anaconda-project add-command` to add commands.
 #
-commands: {notebook: {notebook: src/hr_projection.ipynb, env_spec: default}, ipython: {
-    unix: ipython, env_spec: default}}
+commands: {notebook: {notebook: src/hr_projection.ipynb, env_spec: default}, test: {
+    unix: pytest, env_spec: default}}
 
 
 
