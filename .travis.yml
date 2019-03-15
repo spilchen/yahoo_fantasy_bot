@@ -1,19 +1,17 @@
-# Don't use language: python; this gives us an unnecessary virtualenv
-language: c
+---
+language:
+    # Don't use language: python; this gives us an unnecessary virtualenv
+    - c
 
 os:
-  - linux
+    - linux
 
 install:
-  - wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-  - bash miniconda.sh -b -p "$HOME"/miniconda
-  - source "$HOME"/miniconda/etc/profile.d/conda.sh
-  - conda config --set always_yes yes --set changeps1 no --set auto_update_conda false
-  - conda install -c defaults -c anaconda-project 
-  - conda info -a
-  - export LANG=en_US.UTF-8
-  - export COVERAGE_DIR=":$HOME/htmlcov"
-  - printenv | sort
+    - wget https://repo.anaconda.com/archive/Anaconda3-2018.12-Linux-x86_64.sh -O anaconda.sh
+    - bash ./anaconda.sh -b -p anaconda
+    - source ./anaconda/etc/profile.d/conda.sh
+    - conda config --set always_yes yes --set changeps1 no --set auto_update_conda false
+    - conda activate
 
 script:
-  - "$HOME"/miniconda/bin/anaconda-project run pytest
+    - anaconda/bin/anaconda-project run pytest
