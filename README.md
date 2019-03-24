@@ -12,13 +12,18 @@ The environment to run the notebooks and scripts is encapsulated in an anaconda-
 
 To run scripts that rely on Yahoo! Fantasy APIs, you need to request credentials from [Yahoo!](https://developer.yahoo.com/apps/create/)  When requesting be sure to get Read access to Fantasy Sports.
 
-Once the credentials have been acquired you need to store them in the anaconda-project.yml as variables so the scripts can use them.  The credentials are initially stored with place holder values.  To add your actual values, you can do so with the following commands:
+After you have acquired the credentials you need to store them in the anaconda-project.yml as variables so the scripts can use them.  The credentials are initially stored with place holder values.  To add your actual values, you can do so with the following commands:
 ```
-anaconda-project set-variable YAHOO_CLIENT_ID=<yourID>
-anaconda-project set-variable YAHOO_CLIENT_SECRET=<yourSecret>
+anaconda-project set-variable YAHOO_CONSUMER_ID=<yourID>
+anaconda-project set-variable YAHOO_CONSUMER_SECRET=<yourSecret>
 ```
 
-Once anaconda-project is installed and credentials have been added, you can start a notebook via:
+Once anaconda-project is installed and credentials have been added, you can need to authenticate with Yahoo!  This only needs to be run once after a fresh `git clone`.  Run this command:
+```
+anaconda-project run python src/yahoo_auth.py
+```
+
+Finally, you can start a notebook via:
 
 ```
 anaconda-project run notebook
