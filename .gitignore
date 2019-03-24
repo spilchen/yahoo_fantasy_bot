@@ -2,3 +2,5 @@ envs/*
 *.model
 .ipynb_checkpoints
 __pycache__/
+oauth2.json
+anaconda-project-local.yml

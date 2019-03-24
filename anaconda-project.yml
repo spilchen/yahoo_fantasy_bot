@@ -41,7 +41,7 @@ commands: {notebook: {notebook: src/hr_projection.ipynb, env_spec: default}, tes
 # In the variables section, list any environment variables your code depends on.
 # Use `anaconda-project add-variable` to add variables.
 #
-variables: {}
+variables: {YAHOO_CLIENT_ID: none, YAHOO_CLIENT_SECRET: none, YAHOO_AUTH_JSON: oauth2.json}
 
 
 
@@ -77,6 +77,8 @@ packages:
 - numpy
 - pip:
   - pybaseball
+  - yahoo_oauth
+  - rauth
 #
 # In the channels section, list any Conda channel URLs to be searched
 # for packages.
