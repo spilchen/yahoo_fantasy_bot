@@ -18,7 +18,12 @@ anaconda-project set-variable YAHOO_CLIENT_ID=<yourID>
 anaconda-project set-variable YAHOO_CLIENT_SECRET=<yourSecret>
 ```
 
-Once anaconda-project is installed and credentials have been added, you can start a notebook via:
+To authenticate with Yahoo! you need to run a script to confirm the permissions.  This only needs to be run once:
+```
+anaconda-project run python src/auth.py
+```
+
+Once anaconda-project is installed and credentials have been added and setup, you can start a notebook via:
 
 ```
 anaconda-project run notebook
