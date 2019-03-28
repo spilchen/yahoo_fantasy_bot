@@ -79,6 +79,8 @@ packages:
   - pybaseball
   - yahoo_oauth
   - rauth
+  - six==1.10.0
+  - yahoo-fantasy-api
 #
 # In the channels section, list any Conda channel URLs to be searched
 # for packages.
