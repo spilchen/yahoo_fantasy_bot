@@ -6,8 +6,10 @@ from datetime import date, timedelta
 def is_game_on(d):
     """Checks whether on the given baseball is played
 
-    Returns:
-        True if baseball is played
+    :param d: Date to check
+    :type d: date
+    :return: True if baseball is played on this day
+    :rtype: bool
     """
     return d.month >= 4 and d.month <= 9
 
@@ -17,12 +19,12 @@ def prior_game_on(d, delta=1):
 
     It will adjust the date if the date math langs in the baseball offseason
 
-    Args:
-        d - Starting date
-        delta - Number of games to adjust
-
-    Returns:
-        New day
+    :param d: Starting date
+    :type d: date
+    :param delta: Number of games to adjust
+    :type delta: int
+    :return: New day
+    :rtype: date
     """
     for _ in range(delta):
         d = d - timedelta(days=1)
@@ -67,15 +69,15 @@ class Generator:
     not the python Date library?  To account for the off season.  If you want
     the last 5 months of baseball and you are in May, it should return May,
     April and 3 months from the prior season (Sep, Aug, July).
+
+    :param num_pairs: Number of date pairs that produce() will generate
+    :type num_pairs: int
+    :param range_day_len: Number of days each date pair should be
+    :type range_day_len: int
+    :param end_date: The ending date of all of the date pairs produced
+    :type end_date: date
     """
     def __init__(self, num_pairs=6, range_day_len=30, end_date=date.today()):
-        """Object initializer
-
-        Args:
-            num_pairs - Number of date pairs that produce() will generate
-            range_day_len - The number of days each date pair should be
-            end_date (optional) - The ending date to consider in the generator
-        """
         self.range_day_len = range_day_len
         self.num_pairs = num_pairs
         self.end_date = closest_game_on(end_date)
@@ -83,9 +85,9 @@ class Generator:
     def produce(self):
         """Produce a list of date ranges based on the configured object
 
-        Returns:
-          A list of date range pairs.  Each pair will be self.range_day_len
-          days long.
+        :returns: List of date range pairs.  Each pair will be range_day_len
+           days long.
+        :rtype: list
         """
         date_pairs = []
         cur_end_date = self.end_date
