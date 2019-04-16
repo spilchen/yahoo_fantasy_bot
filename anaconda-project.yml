@@ -58,6 +58,7 @@ packages:
   - rauth
   - six==1.10.0
   - yahoo-fantasy-api==0.1.2
+  - objectpath
 #
 # In the channels section, list any Conda channel URLs to be searched
 # for packages.
