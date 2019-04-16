@@ -1,17 +1,15 @@
 ---
+dist:
+    - xenial
+
 language:
-    # Don't use language: python; this gives us an unnecessary virtualenv
-    - c
+    - python
 
-os:
-    - linux
-
+python:
+    - "3.7"
+    
 install:
-    - wget https://repo.anaconda.com/archive/Anaconda3-2018.12-Linux-x86_64.sh -O $HOME/anaconda.sh
-    - bash $HOME/anaconda.sh -b -p $HOME/anaconda
-    - source $HOME/anaconda/etc/profile.d/conda.sh
-    - conda config --set always_yes yes --set changeps1 no --set auto_update_conda false
-    - conda activate
+    - pip install -r requirements.txt
 
 script:
-    - $HOME/anaconda/bin/anaconda-project run pytest
+    - python setup.py test

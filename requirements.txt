@@ -1,0 +1,4 @@
+pytest
+docopt
+yahoo_fantasy_api
+pybaseball
