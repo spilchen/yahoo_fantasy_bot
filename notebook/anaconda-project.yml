@@ -53,7 +53,7 @@ packages:
 - numpy
 - pip:
   - pandas==0.24.2
-  - pybaseball
+  - baseball_scraper
   - yahoo_oauth
   - rauth
   - six==1.10.0

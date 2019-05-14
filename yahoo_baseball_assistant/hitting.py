@@ -1,6 +1,6 @@
 #!/bin/python
 
-from pybaseball import batting_stats_range
+from baseball_scraper import batting_stats_range
 import pandas as pd
 
 

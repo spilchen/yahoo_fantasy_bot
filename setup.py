@@ -16,6 +16,6 @@ setup(name='yahoo_baseball_assistant',
           'License :: OSI Approved :: MIT License',
           'Programming Language :: Python :: 3.5',
       ],
-      install_requires=['yahoo_fantasy_api', 'pybaseball'],
+      install_requires=['yahoo_fantasy_api', 'baseball_scraper'],
       python_requires='>=3',
       zip_safe=True)

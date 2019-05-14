@@ -50,7 +50,7 @@ def closest_game_on(d):
 def to_s(d):
     """Return the date in string format.
 
-    This picks the format that is expected in the pybaseball APIs
+    This picks the format that is expected in the baseball_scraper APIs
 
     Args:
         d - Date to print
@@ -65,10 +65,10 @@ class Generator:
     """Generate a list of date pairs.
 
     This class generates a list of date pairs of a given interval length.
-    Each pair is suitable for the pybaseball APIs.  Why the special APIs and
-    not the python Date library?  To account for the off season.  If you want
-    the last 5 months of baseball and you are in May, it should return May,
-    April and 3 months from the prior season (Sep, Aug, July).
+    Each pair is suitable for the baseball_scraper APIs.  Why the special APIs
+    and not the python Date library?  To account for the off season.  If you
+    want the last 5 months of baseball and you are in May, it should return
+    May, April and 3 months from the prior season (Sep, Aug, July).
 
     :param num_pairs: Number of date pairs that produce() will generate
     :type num_pairs: int
