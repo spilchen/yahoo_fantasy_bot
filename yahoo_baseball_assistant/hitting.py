@@ -51,8 +51,11 @@ def build_predict_dataset(date_range, generator=batting_stats_range):
     :param date_range: A single date range of the baseball data to use
     :type date_range: List of two dates
     '''
-    if len(date_range) == 1:
+    if len(date_range) != 1:
         raise RuntimeError("Must have at exactly 1 date ranges")
+    if len(date_range[0]) != 2:
+        raise RuntimeError("Date range must have start and end date: " +
+                           str(date_range[0]))
     return _build_input(date_range, generator)
 
 

@@ -40,6 +40,22 @@ def test_build_predict_dataset_with_parms():
 
 
 def test_build_predict_dataset():
-    dt = ['2018-09-01', '2018-09-10']
+    dt = [['2018-09-01', '2018-09-10']]
     df = hitting.build_predict_dataset(dt, generator=gen_sample_batting_stats)
     assert(len(df) > 0)
+
+
+def test_build_predict_dataset_with_bad_parms():
+    # Expect a list of dates with a single entry
+    with pytest.raises(Exception):
+        hitting.build_predict_dataset(['2018-09-01', '2018-09-10'],
+                                      generator=gen_sample_batting_stats)
+    # Expect a range with start/end date
+    with pytest.raises(Exception):
+        hitting.build_predict_dataset([['2018-09-01']],
+                                      generator=gen_sample_batting_stats)
+    # Expect a range with 2 dates (start + end)
+    with pytest.raises(Exception):
+        hitting.build_predict_dataset([['2018-09-01', '2018-09-10',
+                                        '2018-09-30']],
+                                      generator=gen_sample_batting_stats)
