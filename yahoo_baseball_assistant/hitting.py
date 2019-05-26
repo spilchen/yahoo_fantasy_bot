@@ -1,6 +1,7 @@
 #!/bin/python
 
 from baseball_scraper import batting_stats_range
+from baseball_id import lookup
 import pandas as pd
 
 
@@ -105,3 +106,23 @@ def _transform(df, min_PA=None):
         df = df[df.PA >= min_PA]
     # Drop any columns with null's and a few non-numeric columns
     return df.dropna().drop(columns=['#days', 'Lev', 'Tm', 'PA', 'G', 'AB'])
+
+
+def build_dataset_for_roster(roster, date_range):
+    """
+    Build a dataset to use with a prediction model for a particular team.
+
+    The resulting dataset will have one entry for each player on the team.
+
+    :param roster: Team to generate the dataset for
+    :type team: yahoo_fantasy_api.Team
+    :param date_range: A single date range of the baseball data to use
+    :type date_range: List of two dates
+    """
+    yahoo_ids = [x['player_id'] for x in roster if x['position_type'] == 'B']
+    lk = lookup.from_yahoo_ids(yahoo_ids)
+    full_df = build_predict_dataset(date_range)
+    df = pd.merge(full_df, lk, left_on='mlb_ID_P0', right_on='mlb_id')
+    # Remove the columns that were added from lk.
+    df = df.drop(labels=lk.columns.to_list(), axis=1)
+    return df

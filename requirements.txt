@@ -2,3 +2,5 @@ pytest
 docopt
 yahoo_fantasy_api
 baseball_scraper
+yahoo_oauth
+baseball_id
