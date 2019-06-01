@@ -24,6 +24,6 @@ if __name__ == '__main__':
     team_key = lg.team_key()
     my_tm = team.Team(sc, team_key)
     bd = baseball_date.Generator(1)
-    df = hitting.build_dataset_for_roster(my_tm.roster(args['<week>']),
-                                          bd.produce())
+    bldr = hitting.Builder(bd.produce())
+    df = bldr.dataset_for_roster(my_tm.roster(args['<week>']))
     print(df)
