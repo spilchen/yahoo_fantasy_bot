@@ -1,6 +1,6 @@
 # yahoo-baseball-assistant
 
-*ML notebooks and scripts for assisting with a Yahoo! Baseball Fantasy team
+*Python scripts for assisting with a Yahoo! Baseball Fantasy team
 
 ## Build status
 

@@ -12,7 +12,7 @@ Usage:
 from docopt import docopt
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
-from yahoo_baseball_assistant import hitting, baseball_date
+from yahoo_baseball_assistant import hitting
 
 
 if __name__ == '__main__':
@@ -23,7 +23,6 @@ if __name__ == '__main__':
     lg = league.League(sc, league_id[0])
     team_key = lg.team_key()
     my_tm = team.Team(sc, team_key)
-    bd = baseball_date.Generator(1)
-    bldr = hitting.Builder(bd.produce())
-    df = bldr.dataset_for_roster(my_tm.roster(args['<week>']))
+    bldr = hitting.Builder()
+    df = bldr.roster_predict(my_tm.roster(args['<week>']))
     print(df)
