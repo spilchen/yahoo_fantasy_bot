@@ -18,6 +18,9 @@ class Builder:
     def set_id_lookup(self, lk):
         self.id_lookup = lk
 
+    def set_fg_scraper(self, fg):
+        self.fg = fg
+
     def roster_predict(self, roster):
         """Build a dataset of predictions for a given roster
 
@@ -34,7 +37,8 @@ class Builder:
             self.fg.set_player_id(fg_id)
             df = df.append(self.fg.scrape(instance='ZiPS (R)'),
                            ignore_index=True)
-        df['player_id'] = pd.Series(yahoo_ids, index=df.index)
+        if len(df.index) > 0:
+            df['player_id'] = pd.Series(yahoo_ids, index=df.index)
         return df
 
     def _cache_roster(self, roster):
