@@ -2,9 +2,12 @@
 
 
 def test_roster_predict(hitting_builder):
-    roster = [{'player_id': 9842, 'position_type': 'B'},
-              {'player_id': 8967, 'position_type': 'B'}]
-    df = hitting_builder.roster_predict(roster)
+    roster = [{'player_id': 9842, 'position_type': 'B',
+               'selected_position': '1B', 'name': 'Joe'},
+              {'player_id': 8967, 'position_type': 'B',
+               'selected_position': '2B', 'name': 'Bob'}]
+    hitting_builder.set_roster(roster)
+    df = hitting_builder.roster_predict()
     print(df)
     assert(len(df) == 2)
     assert(df.HR[0] == 16)
@@ -16,10 +19,13 @@ def test_roster_predict(hitting_builder):
 
 
 def test_empty_roster_predict(hitting_builder):
-    df = hitting_builder.roster_predict([])
+    hitting_builder.set_roster([])
+    df = hitting_builder.roster_predict()
     print(df)
     assert(len(df) == 0)
-    roster = [{'player_id': 0, 'position_type': 'B'}]
-    df = hitting_builder.roster_predict(roster)
+    roster = [{'player_id': 0, 'position_type': 'B',
+               'selected_position': '1B', 'name': 'Fred'}]
+    hitting_builder.set_roster(roster)
+    df = hitting_builder.roster_predict()
     print(df)
     assert(len(df) == 0)

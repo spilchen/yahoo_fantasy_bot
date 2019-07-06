@@ -10,10 +10,20 @@ class Builder:
 
     The datasets it generates are fully populated with projected stats.  The
     projection stats are scraped from fangraphs.com.
+
+    :param team: Yahoo! Team to do the predictions for
+    :type team: yahoo_fantasy_api.team.Team
+    :param week: Week number to build the predictions for
+    :type week: int
     """
-    def __init__(self):
+    def __init__(self, team, week):
         self.id_lookup = Lookup
         self.fg = fangraphs.Scraper()
+        self.team = team
+        self.week = week
+        self.roster = None
+        if team is not None:
+            self.roster = team.roster(week)
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
@@ -21,30 +31,38 @@ class Builder:
     def set_fg_scraper(self, fg):
         self.fg = fg
 
-    def roster_predict(self, roster):
+    def set_roster(self, roster):
+        self.roster = roster
+
+    def roster_predict(self):
         """Build a dataset of predictions for a given roster
 
-        :param roster: Set of players to generate the predictions for
-        :type team: yahoo_fantasy_api.Team
         :return: Dataset of predictions
         :rtype: DataFrame
         """
-        yahoo_ids = [x['player_id'] for x in roster if
-                     x['position_type'] == 'B']
-        lk = self.id_lookup.from_yahoo_ids(yahoo_ids)
+        lk = self._find_roster()
         df = pd.DataFrame()
-        for fg_id in lk['fg_id']:
+        for fg_id, name in zip(lk['fg_id'], lk['yahoo_name']):
             self.fg.set_player_id(fg_id)
-            df = df.append(self.fg.scrape(instance='ZiPS (R)'),
-                           ignore_index=True)
-        if len(df.index) > 0:
-            df['player_id'] = pd.Series(yahoo_ids, index=df.index)
+            scrape_series = self.fg.scrape(instance='Steamer (R)').iloc(0)[0]
+            meta_series = pd.Series(data=[fg_id, name],
+                                    index=['fg_id', 'name'])
+            combined_series = scrape_series.append(meta_series)
+            df = df.append(combined_series, ignore_index=True)
         return df
 
-    def _cache_roster(self, roster):
-        yahoo_ids = [x['player_id'] for x in roster if
-                     x['position_type'] == 'B']
+    def _find_roster(self):
+        yahoo_ids = [x['player_id'] for x in self.roster if
+                     (x['position_type'] == 'B' and
+                      x['selected_position'] != 'BN')]
         lk = self.id_lookup.from_yahoo_ids(yahoo_ids)
-        for fg_id in lk['fg_id']:
-            if fg_id not in self.scrape_cache:
-                self.scrape_cache[fg_id] = fangraphs.Scraper(player_id=fg_id)
+        # Do a lookup of names.  This lookup will find any player that doesn't
+        # have a yahoo_id in the lookup cache.  This is done for new rookies
+        # that are on the roster.
+        names = [x['name'] for x in self.roster if
+                 (x['position_type'] == 'B' and
+                  x['selected_position'] != 'BN')]
+        # Union the two lookup to have a complete picture of the roster
+        lk_miss = self.id_lookup.from_names(names, filter_missing='yahoo_id')
+        lk = lk.merge(lk_miss, how='outer')
+        return lk
