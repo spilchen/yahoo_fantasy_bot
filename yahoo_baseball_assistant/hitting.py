@@ -3,6 +3,7 @@
 from baseball_scraper import fangraphs, baseball_reference
 from baseball_id import Lookup
 import pandas as pd
+import unicodedata
 
 
 class Builder:
@@ -46,7 +47,7 @@ class Builder:
         """
         lk = self._find_roster()
         df = pd.DataFrame()
-        for fg_id, name, team in zip(lk['fg_id'], lk['yahoo_name'],
+        for fg_id, name, team in zip(lk['fg_id'], lk['mlb_name'],
                                      lk['mlb_team']):
             # TODO: use lahman database instead of this mapping.  The
             # abbreviation from baseball_id is different then at
@@ -142,6 +143,10 @@ class Builder:
                         name = plyr['name'][0:paren-1].strip()
                     else:
                         name = plyr['name']
+                    # Get rid of any accents
+                    name = unicodedata.normalize('NFD', name).encode('ascii',
+                                                                     'ignore')
+                    name = name.decode('utf-8')
                     one_lk = self.id_lookup.from_names([name])
 
             if len(one_lk.index) == 0:
@@ -160,3 +165,27 @@ class Builder:
             self.mlb_team[abrev].set_date_range(self.start_date, self.end_date)
         df = self.mlb_team[abrev].scrape()
         return len(df.index)
+
+    def swap_player(self, inp, outp):
+        """Modifies the roster by swapping a player.
+
+        :param inp: Name of the player to swap in
+        :type inp: str
+        :param outp: Name of the player to swap out
+        :type outp: str
+        """
+        found_player = False
+        for plyr in self.roster:
+            pname = unicodedata.normalize('NFD', plyr['name']).encode(
+                'ascii', 'ignore').decode('utf-8')
+            if outp == pname:
+                self.roster.remove(plyr)
+                found_player = True
+                break
+        if not found_player:
+            raise ValueError("Could not find player on roster to remove: {}"
+                             .format(outp))
+        self.roster.append({'position_type': 'B',
+                            'selected_position': 'Util',
+                            'name': inp,
+                            'player_id': -1})
