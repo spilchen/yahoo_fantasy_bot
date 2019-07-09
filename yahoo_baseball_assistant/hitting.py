@@ -20,7 +20,6 @@ class Builder:
     def __init__(self, lg, team):
         self.id_lookup = Lookup
         self.fg = fangraphs.Scraper()
-        self.team = team
         self.week = lg.current_week() + 1
         if self.week >= lg.end_week():
             raise RuntimeError("Season over no more weeks to predict")
@@ -29,6 +28,16 @@ class Builder:
         self.roster = None
         if team is not None:
             self.roster = team.roster(self.week)
+
+    def __getstate__(self):
+        return (self.fg, self.week, self.start_date, self.end_date,
+                self.roster)
+
+    def __setstate__(self, state):
+        self.id_lookup = Lookup
+        self.mlb_team = {}
+        (self.fg, self.week, self.start_date, self.end_date,
+         self.roster) = state
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
