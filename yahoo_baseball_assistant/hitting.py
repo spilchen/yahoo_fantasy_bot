@@ -48,6 +48,9 @@ class Builder:
     def set_roster(self, roster):
         self.roster = roster
 
+    def get_roster(self):
+        return self.roster
+
     def roster_predict(self):
         """Build a dataset of predictions for a given roster
 
@@ -74,6 +77,9 @@ class Builder:
             combined_series = scrape_series.append(meta_series)
             df = df.append(combined_series, ignore_index=True)
         return df
+
+    def is_counting_stat(self, stat):
+        return stat in ['R', 'HR', 'RBI', 'SB']
 
     def sum_prediction(self, df):
         """Summarize the predictions into stat categories
@@ -118,10 +124,16 @@ class Builder:
         :rtype: Tuple of two ints
         """
         (win, loss) = (0, 0)
-        for l, r in zip(left, right):
-            if l > r:
+        for l, r, name in zip(left, right, left.index):
+            if self.is_counting_stat(name):
+                conv_l = int(l)
+                conv_r = int(r)
+            else:
+                conv_l = round(l, 3)
+                conv_r = round(r, 3)
+            if conv_l > conv_r:
                 win += 1
-            elif r > l:
+            elif conv_r > conv_l:
                 loss += 1
         return (win, loss)
 
@@ -153,9 +165,7 @@ class Builder:
                     else:
                         name = plyr['name']
                     # Get rid of any accents
-                    name = unicodedata.normalize('NFD', name).encode('ascii',
-                                                                     'ignore')
-                    name = name.decode('utf-8')
+                    name = self.normalized(name)
                     one_lk = self.id_lookup.from_names([name])
 
             if len(one_lk.index) == 0:
@@ -165,7 +175,7 @@ class Builder:
             if lk is None:
                 lk = one_lk
             else:
-                lk = lk.merge(one_lk, how='outer')
+                lk = lk.append(one_lk)
         return lk
 
     def _num_games_for_team(self, abrev):
@@ -175,26 +185,76 @@ class Builder:
         df = self.mlb_team[abrev].scrape()
         return len(df.index)
 
-    def swap_player(self, inp, outp):
-        """Modifies the roster by swapping a player.
+    def normalized(self, name):
+        return unicodedata.normalize('NFD', name).encode(
+            'ascii', 'ignore').decode('utf-8')
 
-        :param inp: Name of the player to swap in
-        :type inp: str
-        :param outp: Name of the player to swap out
-        :type outp: str
+    def player_exists(self, player_name):
+        """Check if the given player is on your roster
+
+        :param player_name: The player name to check
+        :type player_name: string
+        :return: True if the player, False otherwise
+        :rtype: boolean
         """
-        found_player = False
         for plyr in self.roster:
-            pname = unicodedata.normalize('NFD', plyr['name']).encode(
-                'ascii', 'ignore').decode('utf-8')
-            if outp == pname:
+            if player_name == self.normalized(plyr['name']):
+                return True
+        return False
+
+    def del_player(self, player_name):
+        """Removes the given player from your roster
+
+        :param player_name: Full name of the player to delete.  The player name
+               must this exactly; with the exception of accents, which are
+               normalized out
+        :type player_name: str
+        """
+        for plyr in self.roster:
+            if self.normalized(player_name) == self.normalized(plyr['name']):
                 self.roster.remove(plyr)
-                found_player = True
-                break
-        if not found_player:
-            raise ValueError("Could not find player on roster to remove: {}"
-                             .format(outp))
-        self.roster.append({'position_type': 'B',
-                            'selected_position': 'Util',
-                            'name': inp,
+
+    def get_position_type(self, pos):
+        if pos in ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "Util"]:
+            return 'B'
+        elif pos in ["SP", "RP"]:
+            return 'P'
+        else:
+            raise ValueError("{} is not a valid position".format(pos))
+
+    def add_player(self, player_name, pos):
+        """Adds a player to the roster
+
+        This will raise an error if the player already exists on the roster.
+
+        :param player_name: Full name of the player to delete.  The player name
+               must this exactly; with the exception of accents, which are
+               normalized out
+        :type player_name: str
+        :param pos: The short version of the position.
+        :type pos: str
+        """
+        if self.player_exists(player_name):
+            raise ValueError("Player is already on the roster")
+
+        self.roster.append({'position_type': self.get_position_type(pos),
+                            'selected_position': pos,
+                            'name': player_name,
                             'player_id': -1})
+
+    def change_position(self, player_name, pos):
+        """Change the position of a player
+
+        The player must be on your roster.
+
+        :param player_name: Full name of the player who's position is changing
+        :type player_name: str
+        :param pos: The short version of the position.
+        :type pos: str
+        """
+        if not self.player_exists(player_name):
+            raise ValueError("Player not found on roster")
+
+        for plyr in self.roster:
+            if self.normalized(player_name) == self.normalized(plyr['name']):
+                plyr['selected_position'] = pos
