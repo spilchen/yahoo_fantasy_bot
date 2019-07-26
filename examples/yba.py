@@ -17,6 +17,7 @@ import time
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
 from yahoo_baseball_assistant import hitting
+from baseball_scraper import fangraphs
 
 
 logging.basicConfig(
@@ -301,6 +302,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
 
     def init_team_bldrs(self):
         self.team_bldrs = {}
+        fg = fangraphs.Scraper("Steamer (RoS)")
         for tm in self.lg.teams():
             fn = "{}.pkl".format(tm['team_key'])
             if os.path.exists(fn):
@@ -316,7 +318,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
                     continue
             logger.info("Building new team {} ...".format(tm['team_key']))
             self.team_bldrs[tm['team_key']] = hitting.Builder(
-                self.lg, self.lg.to_team(tm['team_key']))
+                self.lg, self.lg.to_team(tm['team_key']), fg)
             self.team_bldrs[tm['team_key']].save_on_exit = True
 
     def save_cached_team_bldrs(self):

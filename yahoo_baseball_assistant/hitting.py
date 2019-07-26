@@ -1,6 +1,6 @@
 #!/bin/python
 
-from baseball_scraper import fangraphs, baseball_reference
+from baseball_scraper import baseball_reference
 from baseball_id import Lookup
 import pandas as pd
 import unicodedata
@@ -17,9 +17,9 @@ class Builder:
     :param week: Week number to build the predictions for
     :type week: int
     """
-    def __init__(self, lg, team):
+    def __init__(self, lg, team, fg):
         self.id_lookup = Lookup
-        self.fg = fangraphs.Scraper()
+        self.fg = fg
         self.week = lg.current_week() + 1
         if self.week >= lg.end_week():
             raise RuntimeError("Season over no more weeks to predict")
@@ -41,9 +41,6 @@ class Builder:
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
-
-    def set_fg_scraper(self, fg):
-        self.fg = fg
 
     def set_roster(self, roster):
         self.roster = roster
@@ -68,13 +65,11 @@ class Builder:
                 team = 'WSN'
             if team == 'CWS':
                 team = 'CHW'
-            self.fg.set_player_id(fg_id)
-            scrape_series = self.fg.scrape(instance='Steamer (R)').iloc(0)[0]
+            player_df = self.fg.scrape(fg_id).iloc(0)[0]
             wk_games = self._num_games_for_team(team)
-            meta_series = pd.Series(data=[fg_id, name, team, wk_games],
-                                    index=['fg_id', 'name', 'team',
-                                           'WK_G'])
-            combined_series = scrape_series.append(meta_series)
+            meta_df = pd.Series(data=[fg_id, name, team, wk_games],
+                                index=['fg_id', 'name', 'team', 'WK_G'])
+            combined_series = player_df.append(meta_df)
             df = df.append(combined_series, ignore_index=True)
         return df
 
