@@ -7,7 +7,7 @@ import unicodedata
 
 
 class Builder:
-    """Class that constructs prediction datasets for hitters.
+    """Class that constructs prediction datasets for hitters and pitchers.
 
     The datasets it generates are fully populated with projected stats.  The
     projection stats are scraped from fangraphs.com.
@@ -48,13 +48,19 @@ class Builder:
     def get_roster(self):
         return self.roster
 
-    def roster_predict(self):
-        """Build a dataset of predictions for a given roster
+    def predict_hitters(self):
+        """Build a dataset of hitting predictions for the upcoming week
+
+        The roster is inputed when the object was first created.  It will
+        scrape the predictions from fangraphs returning a DataFrame.
+
+        The returning DataFrame is adjusted for the weekly matchup.  Meaning we
+        predict the number of HRs, RBIs, etc. for the upcoming scoring week.
 
         :return: Dataset of predictions
         :rtype: DataFrame
         """
-        lk = self._find_roster()
+        lk = self._find_roster('B')
         df = pd.DataFrame()
         for fg_id, name, team in zip(lk['fg_id'], lk['mlb_name'],
                                      lk['mlb_team']):
@@ -72,6 +78,20 @@ class Builder:
             combined_series = player_df.append(meta_df)
             df = df.append(combined_series, ignore_index=True)
         return df
+
+    def predict_pitchers(self):
+        """Build a dataset of pitching predictions for the upcoming week
+
+        The roster we use is the one passed in when the object was first
+        created.  It will scrape predictions from fangraphs returning a
+        DataFrame.
+
+        The returning DataFrame takes into account the matches for the week.
+
+        :return: Dataset of predictions
+        :rtype: DataFrame
+        """
+        pass
 
     def is_counting_stat(self, stat):
         return stat in ['R', 'HR', 'RBI', 'SB']
@@ -132,10 +152,10 @@ class Builder:
                 loss += 1
         return (win, loss)
 
-    def _find_roster(self):
+    def _find_roster(self, position_type):
         lk = None
         for plyr in self.roster:
-            if plyr['position_type'] != 'B' or \
+            if plyr['position_type'] != position_type or \
                     plyr['selected_position'] in ['BN', 'DL']:
                 continue
 

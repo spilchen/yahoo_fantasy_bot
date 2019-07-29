@@ -16,7 +16,7 @@ import os
 import time
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
-from yahoo_baseball_assistant import hitting
+from yahoo_baseball_assistant import prediction
 from baseball_scraper import fangraphs
 
 
@@ -74,9 +74,11 @@ roster.  Press Cancel to quit the application.
 
     def change_position(self):
         if self.roster.edit_cell is not None:
+            logging.info("Roster edit cell: {}".format(
+                self.roster.edit_cell))
             self.parentApp.selected_player = self.roster.values[
-                self.roster.edit_cell[0]][2]
-            logger.info("Open diaglog to change positino {}".format(
+                self.roster.edit_cell[0]][1]
+            logger.info("Open diaglog to change position {}".format(
                 self.parentApp.selected_player))
             self.parentApp.switchForm('CHANGEPOS')
 
@@ -85,8 +87,10 @@ roster.  Press Cancel to quit the application.
 
     def delete_player(self):
         if self.roster.edit_cell is not None:
+            logging.info("Roster edit cell: {}".format(
+                self.roster.edit_cell))
             self.parentApp.selected_player = self.roster.values[
-                self.roster.edit_cell[0]][2]
+                self.roster.edit_cell[0]][1]
             logger.info("Open diaglog to delete {}".format(
                 self.parentApp.selected_player))
             self.parentApp.switchForm('DELPLAYER')
@@ -103,7 +107,7 @@ class PredictedRosterStatForm(npyscreen.Form):
                                  name='Team Key',
                                  value=self.parentApp.predict_team['team_key'])
         df = self.parentApp.team_bldrs[
-            self.parentApp.predict_team['team_key']].roster_predict()
+            self.parentApp.predict_team['team_key']].predict_hitters()
         self.roster = self.add(
             npyscreen.GridColTitles, name='Roster',
             col_titles=self.parentApp.get_hitting_columns(),
@@ -244,7 +248,7 @@ opponent for your next week.
         teams = self.parentApp.get_opp_teams()
         self.roster.values = []
         for tm in teams:
-            df = self.parentApp.team_bldrs[tm['team_key']].roster_predict()
+            df = self.parentApp.team_bldrs[tm['team_key']].predict_hitters()
             opp_sum = self.parentApp.team_bldrs[tm['team_key']] \
                 .sum_prediction(df)
             (w, l) = self.parentApp.team_bldrs[tm['team_key']].score(my_sum,
@@ -284,7 +288,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.my_tm = team.Team(self.sc, self.team_key)
         self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
         self.init_team_bldrs()
-        self.df = self.team_bldrs[self.team_key].roster_predict()
+        self.df = self.team_bldrs[self.team_key].predict_hitters()
         self.teams = None
         self.selected_player = None
 
@@ -317,7 +321,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
                         self.team_bldrs[tm['team_key']].save_on_exit = False
                     continue
             logger.info("Building new team {} ...".format(tm['team_key']))
-            self.team_bldrs[tm['team_key']] = hitting.Builder(
+            self.team_bldrs[tm['team_key']] = prediction.Builder(
                 self.lg, self.lg.to_team(tm['team_key']), fg)
             self.team_bldrs[tm['team_key']].save_on_exit = True
 
