@@ -14,6 +14,7 @@ import logging
 import pickle
 import os
 import time
+import math
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
 from yahoo_baseball_assistant import prediction
@@ -28,6 +29,76 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 JSON_FILE = None
+
+
+class CellColorPicker:
+    def __init__(self, value=None, highest_is_best=True, is_ratio=False):
+        self.value = value
+        self.highest_is_best = highest_is_best
+        self.is_ratio = is_ratio
+
+    def pick_color(self, cval):
+        if self.value is None:
+            return 'DEFAULT'
+        else:
+            if self.is_ratio:
+                other_val = float(cval)
+                my_val = float(self.value)
+                if math.isclose(other_val, my_val):
+                    return 'DEFAULT'
+                else:
+                    if self.highest_is_best:
+                        if other_val > my_val:
+                            return 'DANGER'
+                        else:
+                            return 'GOOD'
+                    else:
+                        if other_val < my_val:
+                            return 'DANGER'
+                        else:
+                            return 'GOOD'
+            else:
+                other_val = int(cval)
+                my_val = int(self.value)
+                if other_val == my_val:
+                    return 'DEFAULT'
+                else:
+                    if self.highest_is_best:
+                        if other_val > my_val:
+                            return 'DANGER'
+                        else:
+                            return 'GOOD'
+                    else:
+                        if other_val < my_val:
+                            return 'DANGER'
+                        else:
+                            return 'GOOD'
+
+    def update_value(self, value):
+        self.value = value
+
+
+class ColorRosterGrid(npyscreen.GridColTitles):
+    def set_cell_color_pickers(self, pickers):
+        """Set color pickers for each column in the grid
+
+        self.color_pickers is a list of CellColorPickers (one for each cell).
+        It is used to pick the appropriate color for the cell.
+
+        :param pickers: objects that pick the color for the column.  There
+        should be one of these for each column in the grid.
+        :type pickers: list(CellColorPicker)
+        """
+        self.pickers = pickers
+
+    def get_cell_color_pickers(self):
+        return self.pickers
+
+    def custom_print_cell(self, actual_cell, cell_display_value):
+        if actual_cell.grid_current_value_index != -1:
+            row, col = actual_cell.grid_current_value_index
+            picker = self.pickers[col]
+            actual_cell.color = picker.pick_color(cell_display_value)
 
 
 class MyRosterForm(npyscreen.ActionFormWithMenus):
@@ -110,7 +181,7 @@ class PredictedRosterStatForm(npyscreen.Form):
             self.parentApp.predict_team['team_key']].predict()
         self.roster = self.add(
             npyscreen.GridColTitles, name='Roster',
-            col_titles=self.parentApp.get_hitting_columns(),
+            col_titles=self.parentApp.get_columns(),
             values=self.parentApp.gen_team(df))
 
     def afterEditing(self):
@@ -215,8 +286,23 @@ opponent for your next week.
                  editable=False, height=4)
         col_titles = ['Team', 'Win', 'Loss'] + self.parentApp.get_hit_stats() \
             + self.parentApp.get_pit_stats()
-        self.roster = self.add(npyscreen.GridColTitles, name='Summary',
+        self.roster = self.add(ColorRosterGrid, name='Summary',
                                col_titles=col_titles)
+        color_pickers = [CellColorPicker(), CellColorPicker(),
+                         CellColorPicker()]
+        for _ in self.parentApp.get_counting_hit_stats():
+            color_pickers.append(CellColorPicker(is_ratio=False,
+                                                 highest_is_best=True))
+        for _ in self.parentApp.get_ratio_hit_stats():
+            color_pickers.append(CellColorPicker(is_ratio=True,
+                                                 highest_is_best=True))
+        for _ in self.parentApp.get_counting_pit_stats():
+            color_pickers.append(CellColorPicker(is_ratio=False,
+                                                 highest_is_best=True))
+        for _ in self.parentApp.get_ratio_pit_stats():
+            color_pickers.append(CellColorPicker(is_ratio=True,
+                                                 highest_is_best=False))
+        self.roster.set_cell_color_pickers(color_pickers)
 
         self.menu = self.new_menu(name="Options")
         self.menu.addItem(text="My predicted stats",
@@ -246,6 +332,13 @@ opponent for your next week.
         my_sum = self.parentApp.team_bldrs[self.parentApp.team_key] \
             .sum_prediction(self.parentApp.df)
         logging.info(my_sum)
+        for name, picker in zip([None, None, None] +
+                                self.parentApp.get_hit_stats() +
+                                self.parentApp.get_pit_stats(),
+                                self.roster.pickers):
+            if name is not None:
+                picker.update_value(my_sum[name])
+
         for name, stat in zip(self.parentApp.get_hit_stats(), self.hit_stats):
             if name in self.parentApp.get_counting_hit_stats():
                 stat.value = int(my_sum[name])
@@ -356,13 +449,14 @@ class YahooAssistant(npyscreen.NPSAppManaged):
 
     def gen_team(self, df):
         roster = []
-        columns = self.get_hitting_columns()
+        columns = self.get_columns()
         for plyr in df.iterrows():
             roster.append([plyr[1][x] for x in columns])
         return roster
 
-    def get_hitting_columns(self):
-        return ['name', 'team', 'WK_G', 'G', 'AB'] + self.get_hit_stats()
+    def get_columns(self):
+        return ['Name', 'team', 'WK_G', 'G', 'AB'] + self.get_hit_stats() + \
+            self.get_pit_stats()
 
     def get_hit_stats(self):
         return self.get_counting_hit_stats() + self.get_ratio_hit_stats()
