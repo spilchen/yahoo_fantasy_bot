@@ -8,4 +8,4 @@ anaconda-project-local.yml
 .eggs/
 *.egg-info/
 *.pkl
-yba.log
+*.log

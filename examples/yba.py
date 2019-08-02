@@ -17,7 +17,7 @@ import time
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
 from yahoo_baseball_assistant import prediction
-from baseball_scraper import fangraphs
+from baseball_scraper import fangraphs, baseball_reference
 
 
 logging.basicConfig(
@@ -107,7 +107,7 @@ class PredictedRosterStatForm(npyscreen.Form):
                                  name='Team Key',
                                  value=self.parentApp.predict_team['team_key'])
         df = self.parentApp.team_bldrs[
-            self.parentApp.predict_team['team_key']].predict_hitters()
+            self.parentApp.predict_team['team_key']].predict()
         self.roster = self.add(
             npyscreen.GridColTitles, name='Roster',
             col_titles=self.parentApp.get_hitting_columns(),
@@ -198,9 +198,14 @@ Press OK to return back to your roster.  Press Cancel to quit the application.
                  height=7)
         self.add(npyscreen.FixedText, value="Your predictions:",
                  editable=False)
-        self.stats = []
-        for stat in self.parentApp.get_stats():
-            self.stats.append(self.add(npyscreen.TitleFixedText, name=stat))
+        self.hit_stats = []
+        for stat in self.parentApp.get_hit_stats():
+            self.hit_stats.append(self.add(npyscreen.TitleFixedText,
+                                           name=stat))
+        self.pit_stats = []
+        for stat in self.parentApp.get_pit_stats():
+            self.pit_stats.append(self.add(npyscreen.TitleFixedText,
+                                           name=stat))
 
         self.add(npyscreen.MultiLineEdit,
                  value="""
@@ -208,7 +213,8 @@ Comparison with your opponents.  The team with the prefixed '*' is the
 opponent for your next week.
 """,
                  editable=False, height=4)
-        col_titles = ['Team', 'Win', 'Loss'] + self.parentApp.get_stats()
+        col_titles = ['Team', 'Win', 'Loss'] + self.parentApp.get_hit_stats() \
+            + self.parentApp.get_pit_stats()
         self.roster = self.add(npyscreen.GridColTitles, name='Summary',
                                col_titles=col_titles)
 
@@ -239,20 +245,31 @@ opponent for your next week.
         npyscreen.notify("Scraping data for prediction.  Please wait...")
         my_sum = self.parentApp.team_bldrs[self.parentApp.team_key] \
             .sum_prediction(self.parentApp.df)
-        for name, stat in zip(self.parentApp.get_stats(), self.stats):
-            if name in self.parentApp.get_counting_stats():
+        logging.info(my_sum)
+        for name, stat in zip(self.parentApp.get_hit_stats(), self.hit_stats):
+            if name in self.parentApp.get_counting_hit_stats():
                 stat.value = int(my_sum[name])
+            else:
+                stat.value = "{:.3f}".format(my_sum[name])
+        for name, stat in zip(self.parentApp.get_pit_stats(), self.pit_stats):
+            if name in self.parentApp.get_counting_pit_stats():
+                stat.value = str(int(my_sum[name]))
             else:
                 stat.value = "{:.3f}".format(my_sum[name])
 
         teams = self.parentApp.get_opp_teams()
         self.roster.values = []
         for tm in teams:
-            df = self.parentApp.team_bldrs[tm['team_key']].predict_hitters()
+            logger.info("Scraping team: " + str(tm))
+            df = self.parentApp.team_bldrs[tm['team_key']].predict()
+            logger.info("Sum prediction: " + str(tm))
             opp_sum = self.parentApp.team_bldrs[tm['team_key']] \
                 .sum_prediction(df)
+            logger.info(opp_sum)
+            logger.info("Score: " + str(tm))
             (w, l) = self.parentApp.team_bldrs[tm['team_key']].score(my_sum,
                                                                      opp_sum)
+            logger.info("Scoring result: {} - {}".format(w, l))
             team_res = []
             # Add an asterisk beside the name to denote the week opponent
             if tm['team_key'] == self.parentApp.matchup:
@@ -262,9 +279,13 @@ opponent for your next week.
             team_res.append(team_prefix + tm['name'])
             team_res.append(w)
             team_res.append(l)
-            for stat in self.parentApp.get_counting_stats():
+            for stat in self.parentApp.get_counting_hit_stats():
                 team_res.append(int(opp_sum[stat]))
-            for stat in self.parentApp.get_ratio_stats():
+            for stat in self.parentApp.get_ratio_hit_stats():
+                team_res.append("{:.3f}".format(opp_sum[stat]))
+            for stat in self.parentApp.get_counting_pit_stats():
+                team_res.append(int(opp_sum[stat]))
+            for stat in self.parentApp.get_ratio_pit_stats():
                 team_res.append("{:.3f}".format(opp_sum[stat]))
             self.roster.values.append(team_res)
 
@@ -288,7 +309,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.my_tm = team.Team(self.sc, self.team_key)
         self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
         self.init_team_bldrs()
-        self.df = self.team_bldrs[self.team_key].predict_hitters()
+        self.df = self.team_bldrs[self.team_key].predict()
         self.teams = None
         self.selected_player = None
 
@@ -306,7 +327,8 @@ class YahooAssistant(npyscreen.NPSAppManaged):
 
     def init_team_bldrs(self):
         self.team_bldrs = {}
-        fg = fangraphs.Scraper("Steamer (RoS)")
+        fg = fangraphs.Scraper("Depth Charts (RoS)")
+        ts = baseball_reference.TeamScraper()
         for tm in self.lg.teams():
             fn = "{}.pkl".format(tm['team_key'])
             if os.path.exists(fn):
@@ -322,7 +344,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
                     continue
             logger.info("Building new team {} ...".format(tm['team_key']))
             self.team_bldrs[tm['team_key']] = prediction.Builder(
-                self.lg, self.lg.to_team(tm['team_key']), fg)
+                self.lg, self.lg.to_team(tm['team_key']), fg, ts)
             self.team_bldrs[tm['team_key']].save_on_exit = True
 
     def save_cached_team_bldrs(self):
@@ -340,16 +362,25 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         return roster
 
     def get_hitting_columns(self):
-        return ['name', 'team', 'WK_G', 'G', 'AB'] + self.get_stats()
+        return ['name', 'team', 'WK_G', 'G', 'AB'] + self.get_hit_stats()
 
-    def get_stats(self):
-        return self.get_counting_stats() + self.get_ratio_stats()
+    def get_hit_stats(self):
+        return self.get_counting_hit_stats() + self.get_ratio_hit_stats()
 
-    def get_counting_stats(self):
+    def get_counting_hit_stats(self):
         return ['R', 'HR', 'RBI', 'SB']
 
-    def get_ratio_stats(self):
+    def get_ratio_hit_stats(self):
         return ['AVG', 'OBP']
+
+    def get_pit_stats(self):
+        return self.get_counting_pit_stats() + self.get_ratio_pit_stats()
+
+    def get_counting_pit_stats(self):
+        return ['W', 'SO', 'SV', 'HLD']
+
+    def get_ratio_pit_stats(self):
+        return ['ERA', 'WHIP']
 
     def get_opp_teams(self):
         if self.teams is None:

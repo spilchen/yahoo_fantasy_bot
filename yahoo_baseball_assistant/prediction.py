@@ -1,9 +1,14 @@
 #!/bin/python
 
-from baseball_scraper import baseball_reference
+from baseball_scraper import fangraphs
 from baseball_id import Lookup
 import pandas as pd
 import unicodedata
+import datetime
+import logging
+
+
+logger = logging.getLogger()
 
 
 class Builder:
@@ -16,28 +21,32 @@ class Builder:
     :type team: yahoo_fantasy_api.team.Team
     :param week: Week number to build the predictions for
     :type week: int
+    :param fg: Scraper to use to pull data from FanGraphs
+    :type fg: fangraphs.Scraper
+    :param ts: Scraper to use to pull team data from baseball_reference.com
+    :type ts: baseball_reference.TeamScraper
     """
-    def __init__(self, lg, team, fg):
+    def __init__(self, lg, team, fg, ts):
         self.id_lookup = Lookup
         self.fg = fg
+        self.ts = ts
         self.week = lg.current_week() + 1
         if self.week >= lg.end_week():
             raise RuntimeError("Season over no more weeks to predict")
-        (self.start_date, self.end_date) = lg.week_date_range(self.week)
-        self.mlb_team = {}
+        (self.wk_start_date, self.wk_end_date) = lg.week_date_range(self.week)
+        self.season_end_date = datetime.date(self.wk_end_date.year, 12, 31)
         self.roster = None
         if team is not None:
             self.roster = team.roster(self.week)
 
     def __getstate__(self):
-        return (self.fg, self.week, self.start_date, self.end_date,
-                self.roster)
+        return (self.fg, self.ts, self.week, self.wk_start_date,
+                self.wk_end_date, self.season_end_date, self.roster)
 
     def __setstate__(self, state):
         self.id_lookup = Lookup
-        self.mlb_team = {}
-        (self.fg, self.week, self.start_date, self.end_date,
-         self.roster) = state
+        (self.fg, self.ts, self.week, self.wk_start_date, self.wk_end_date,
+         self.season_end_date, self.roster) = state
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
@@ -48,53 +57,49 @@ class Builder:
     def get_roster(self):
         return self.roster
 
-    def predict_hitters(self):
-        """Build a dataset of hitting predictions for the upcoming week
+    def predict(self):
+        """Build a dataset of hitting and pitching predictions for the week
 
         The roster is inputed when the object was first created.  It will
         scrape the predictions from fangraphs returning a DataFrame.
 
-        The returning DataFrame is adjusted for the weekly matchup.  Meaning we
-        predict the number of HRs, RBIs, etc. for the upcoming scoring week.
+        The returning DataFrame is the prediction of each stat for the
+        remainder of the season.
 
         :return: Dataset of predictions
         :rtype: DataFrame
         """
-        lk = self._find_roster('B')
-        df = pd.DataFrame()
-        for fg_id, name, team in zip(lk['fg_id'], lk['mlb_name'],
-                                     lk['mlb_team']):
-            # TODO: use lahman database instead of this mapping.  The
-            # abbreviation from baseball_id is different then at
-            # baseball_reference.
-            if team == 'WSH':
-                team = 'WSN'
-            if team == 'CWS':
-                team = 'CHW'
-            player_df = self.fg.scrape(fg_id).iloc(0)[0]
-            wk_games = self._num_games_for_team(team)
-            meta_df = pd.Series(data=[fg_id, name, team, wk_games],
-                                index=['fg_id', 'name', 'team', 'WK_G'])
-            combined_series = player_df.append(meta_df)
-            df = df.append(combined_series, ignore_index=True)
-        return df
-
-    def predict_pitchers(self):
-        """Build a dataset of pitching predictions for the upcoming week
-
-        The roster we use is the one passed in when the object was first
-        created.  It will scrape predictions from fangraphs returning a
-        DataFrame.
-
-        The returning DataFrame takes into account the matches for the week.
-
-        :return: Dataset of predictions
-        :rtype: DataFrame
-        """
-        pass
+        res = pd.DataFrame()
+        for roster_type, scrape_type in zip(['B', 'P'],
+                                            [fangraphs.ScrapeType.HITTER,
+                                             fangraphs.ScrapeType.PITCHER]):
+            lk = self._find_roster(roster_type)
+            names = lk[lk.fg_id.isna()].mlb_name.to_list()
+            ids = lk.fg_id.dropna().to_list()
+            if len(names) > 0:
+                names_df = self.fg.scrape(names, id_name='Name',
+                                          scrape_as=scrape_type)
+            else:
+                names_df = None
+            if len(ids) > 0:
+                ids_df = self.fg.scrape(ids, scrape_as=scrape_type)
+            else:
+                ids_df = None
+            df = ids_df.append(names_df, sort=False)
+            logger.info(df)
+            team_abbrevs = self._lookup_teams(df.Team.to_list())
+            df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
+            wk_g = self._num_games_for_teams(team_abbrevs, True)
+            df = df.assign(WK_G=pd.Series(wk_g, index=df.index))
+            sea_g = self._num_games_for_teams(team_abbrevs, False)
+            df = df.assign(SEASON_G=pd.Series(sea_g, index=df.index))
+            roster_type = [roster_type] * len(df.index)
+            df = df.assign(roster_type=pd.Series(roster_type, index=df.index))
+            res = res.append(df, sort=False)
+        return res
 
     def is_counting_stat(self, stat):
-        return stat in ['R', 'HR', 'RBI', 'SB']
+        return stat in ['R', 'HR', 'RBI', 'SB', 'W', 'SO', 'SV', 'HLD']
 
     def sum_prediction(self, df):
         """Summarize the predictions into stat categories
@@ -104,27 +109,56 @@ class Builder:
         :return: Summarized predictions
         :rtype: Series
         """
+        # Map of the hitter and pitcher stats.  The key is the stat name in the
+        # data frame and the value is the stat name we store in the series.  We
+        # have this split so that we can have separate aggregate stats for
+        # hitters and pitchers (e.g. BB, H, etc.)
+        hit_stat_cols = {'R': 'R', 'HR': 'HR', 'RBI': 'RBI', 'SB': 'SB',
+                         'AB': 'AB_B', 'H': 'H_B', 'BB': 'BB_B'}
+        pit_stat_cols = {'SO': 'SO', 'SV': 'SV', 'HLD': 'HLD', 'W': 'W',
+                         'G': 'G_P', 'ER': 'ER_P', 'IP': 'IP_P', 'BB': 'BB_P',
+                         'H': 'H_P'}
+
         res = pd.Series()
-        for stat in ['R', 'HR', 'RBI', 'SB', 'AB', 'H', 'BB']:
+        for stat_in, stat_out in hit_stat_cols.items():
             val = 0
             for plyr in df.iterrows():
+                if plyr[1]['roster_type'] != 'B':
+                    continue
                 if plyr[1]['G'] > 0:
-                    val += plyr[1][stat] / plyr[1]['G'] * plyr[1]['WK_G']
-            res = res.append(pd.Series(data=[val], index=[stat]))
+                    val += plyr[1][stat_in] / plyr[1]['G'] * plyr[1]['WK_G']
+            res[stat_out] = val
+
+        for stat_in, stat_out in pit_stat_cols.items():
+            val = 0
+            for plyr in df.iterrows():
+                if plyr[1]['roster_type'] != 'P':
+                    continue
+                if plyr[1]['IP'] > 0:
+                    val += plyr[1][stat_in] / plyr[1]['SEASON_G'] \
+                        * plyr[1]['WK_G']
+            res[stat_out] = val
 
         # Handle ratio stats
-        if res['AB'] > 0:
-            avg = res['H'] / res['AB']
+        if res['AB_B'] > 0:
+            res['AVG'] = res['H_B'] / res['AB_B']
         else:
-            avg = 0
-        if res['AB'] + res['BB'] > 0:
-            oba = (res['H'] + res['BB']) / (res['AB'] + res['BB'])
+            res['AVG'] = None
+        if res['AB_B'] + res['BB_B'] > 0:
+            res['OBP'] = (res['H_B'] + res['BB_B']) / \
+                (res['AB_B'] + res['BB_B'])
         else:
-            oba = 0
-        res = res.append(pd.Series(data=[avg, oba], index=['AVG', 'OBP']))
+            res['OBP'] = None
+        if res['IP_P'] > 0:
+            res['WHIP'] = (res['BB_P'] + res['H_P']) / res['IP_P']
+            res['ERA'] = res['ER_P'] * 9 / res['IP_P']
+        else:
+            res['WHIP'] = None
+            res['ERA'] = None
 
         # Delete the temporary values used to calculate the ratio stats
-        res = res.drop(index=['AB', 'H', 'BB'])
+        res = res.drop(index=['AB_B', 'H_B', 'H_P', 'BB_B', 'BB_P',  'IP_P',
+                              'ER_P', 'G_P'])
 
         return res
 
@@ -151,6 +185,84 @@ class Builder:
             elif conv_r > conv_l:
                 loss += 1
         return (win, loss)
+
+    def _lookup_team(self, team):
+        # TODO: use lahman database instead of this mapping.  The
+        # abbreviation from baseball_id is different then at
+        # baseball_reference.
+        if team == 'WSH':
+            return 'WSN'
+        if team == 'CWS':
+            return 'CHW'
+        return team
+
+    def _lookup_teams(self, teams):
+        # TODO: use lahman database instead of this mapping.
+        a = []
+        for team in teams:
+            if team == "Yankees":
+                a.append("NYY")
+            elif team == "Rays":
+                a.append("TB")
+            elif team == "Red Sox":
+                a.append("BOS")
+            elif team == "Blue Jays":
+                a.append("TOR")
+            elif team == "Orioles":
+                a.append("BAL")
+            elif team == "Twins":
+                a.append("MIN")
+            elif team == "Indians":
+                a.append("CLE")
+            elif team == "White Sox":
+                a.append("CHW")
+            elif team == "Royals":
+                a.append("KC")
+            elif team == "Tigers":
+                a.append("DET")
+            elif team == "Astros":
+                a.append("HOU")
+            elif team == "Athletics":
+                a.append("OAK")
+            elif team == "Angels":
+                a.append("LAA")
+            elif team == "Rangers":
+                a.append("TEX")
+            elif team == "Mariners":
+                a.append("SEA")
+            elif team == "Braves":
+                a.append("ATL")
+            elif team == "Nationals":
+                a.append("WSN")
+            elif team == "Phillies":
+                a.append("PHI")
+            elif team == "Mets":
+                a.append("NYM")
+            elif team == "Marlins":
+                a.append("MIA")
+            elif team == "Cardinals":
+                a.append("STL")
+            elif team == "Cubs":
+                a.append("CHC")
+            elif team == "Brewers":
+                a.append("MIL")
+            elif team == "Reds":
+                a.append("CIN")
+            elif team == "Pirates":
+                a.append("PIT")
+            elif team == "Dodgers":
+                a.append("LAD")
+            elif team == "Giants":
+                a.append("SF")
+            elif team == "Diamondbacks":
+                a.append("ARI")
+            elif team == "Padres":
+                a.append("SD")
+            elif team == "Rockies":
+                a.append("COL")
+            else:
+                raise RuntimeError("Unknown team: {}".format(team))
+        return a
 
     def _find_roster(self, position_type):
         lk = None
@@ -193,12 +305,19 @@ class Builder:
                 lk = lk.append(one_lk)
         return lk
 
-    def _num_games_for_team(self, abrev):
-        if abrev not in self.mlb_team:
-            self.mlb_team[abrev] = baseball_reference.TeamScraper(abrev)
-            self.mlb_team[abrev].set_date_range(self.start_date, self.end_date)
-        df = self.mlb_team[abrev].scrape()
+    def _num_games_for_team(self, abrev, week):
+        if week:
+            self.ts.set_date_range(self.wk_start_date, self.wk_end_date)
+        else:
+            self.ts.set_date_range(self.wk_start_date, self.season_end_date)
+        df = self.ts.scrape(abrev)
         return len(df.index)
+
+    def _num_games_for_teams(self, abrevs, week):
+        games = []
+        for abrev in abrevs:
+            games.append(self._num_games_for_team(abrev, week))
+        return games
 
     def normalized(self, name):
         return unicodedata.normalize('NFD', name).encode(
