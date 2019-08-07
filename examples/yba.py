@@ -18,7 +18,7 @@ import math
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
 from yahoo_baseball_assistant import prediction
-from baseball_scraper import fangraphs, baseball_reference
+from baseball_scraper import fangraphs, baseball_reference, espn
 
 
 logging.basicConfig(
@@ -329,9 +329,10 @@ opponent for your next week.
 
     def beforeEditing(self):
         npyscreen.notify("Scraping data for prediction.  Please wait...")
+        df = self.parentApp.team_bldrs[self.parentApp.team_key].predict()
         my_sum = self.parentApp.team_bldrs[self.parentApp.team_key] \
-            .sum_prediction(self.parentApp.df)
-        logging.info(my_sum)
+            .sum_prediction(df)
+        logging.info("My prediction:\n{}".format(my_sum))
         for name, picker in zip([None, None, None] +
                                 self.parentApp.get_hit_stats() +
                                 self.parentApp.get_pit_stats(),
@@ -402,7 +403,6 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.my_tm = team.Team(self.sc, self.team_key)
         self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
         self.init_team_bldrs()
-        self.df = self.team_bldrs[self.team_key].predict()
         self.teams = None
         self.selected_player = None
 
@@ -422,6 +422,9 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.team_bldrs = {}
         fg = fangraphs.Scraper("Depth Charts (RoS)")
         ts = baseball_reference.TeamScraper()
+        (start_date, end_date) = self.lg.week_date_range(
+            self.lg.current_week() + 1)
+        es = espn.ProbableStartersScraper(start_date, end_date)
         for tm in self.lg.teams():
             fn = "{}.pkl".format(tm['team_key'])
             if os.path.exists(fn):
@@ -437,7 +440,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
                     continue
             logger.info("Building new team {} ...".format(tm['team_key']))
             self.team_bldrs[tm['team_key']] = prediction.Builder(
-                self.lg, self.lg.to_team(tm['team_key']), fg, ts)
+                self.lg, self.lg.to_team(tm['team_key']), fg, ts, es)
             self.team_bldrs[tm['team_key']].save_on_exit = True
 
     def save_cached_team_bldrs(self):
@@ -455,8 +458,8 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         return roster
 
     def get_columns(self):
-        return ['Name', 'team', 'WK_G', 'G', 'AB'] + self.get_hit_stats() + \
-            self.get_pit_stats()
+        return ['Name', 'team', 'WK_G', 'WK_GS', 'G', 'AB'] + \
+            self.get_hit_stats() + self.get_pit_stats()
 
     def get_hit_stats(self):
         return self.get_counting_hit_stats() + self.get_ratio_hit_stats()

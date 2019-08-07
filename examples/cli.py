@@ -21,7 +21,7 @@ from docopt import docopt
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
 from yahoo_baseball_assistant import prediction
-from baseball_scraper import fangraphs, baseball_reference
+from baseball_scraper import fangraphs, baseball_reference, espn
 import logging
 import pickle
 import os
@@ -30,10 +30,10 @@ import os
 def print_team(team_name, df, my_sum):
     print("")
     print("Team Name: {}".format(team_name))
-    columns = ['Name', 'team', 'WK_G', 'G', 'AB', 'R', '2B', '3B',
+    columns = ['Name', 'team', 'WK_G', 'WK_GS', 'G', 'AB', 'R', '2B', '3B',
                'HR', 'RBI', 'BB', 'SO', 'SB', 'AVG', 'OBP', 'W',
                'SO', 'SV', 'HLD', 'ERA', 'WHIP']
-    cformat = "{:20} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} " \
+    cformat = "{:20} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} " \
         "{:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5} {:5}"
     print(cformat.format(*columns))
     for plyr in df.iterrows():
@@ -64,7 +64,7 @@ def get_opp_teams(args, lg, my_tm):
     return teams
 
 
-def init_team_bldrs(args, lg, fg, ts):
+def init_team_bldrs(args, lg, fg, ts, es):
     team_bldrs = {}
     for tm in lg.teams():
         if args['-c']:
@@ -74,7 +74,7 @@ def init_team_bldrs(args, lg, fg, ts):
                     team_bldrs[tm['team_key']] = pickle.load(f)
                 continue
         team_bldrs[tm['team_key']] = prediction.Builder(
-            lg, lg.to_team(tm['team_key']), fg, ts)
+            lg, lg.to_team(tm['team_key']), fg, ts, es)
     return team_bldrs
 
 
@@ -103,8 +103,10 @@ if __name__ == '__main__':
     my_tm = team.Team(sc, team_key)
     fg = fangraphs.Scraper("Depth Charts (RoS)")
     ts = baseball_reference.TeamScraper()
+    (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
+    es = espn.ProbableStartersScraper(start_date, end_date)
 
-    team_bldrs = init_team_bldrs(args, lg, fg, ts)
+    team_bldrs = init_team_bldrs(args, lg, fg, ts, es)
     df = team_bldrs[team_key].predict()
     my_sum = team_bldrs[team_key].sum_prediction(df)
     print_team("Lumber Kings", df, my_sum)

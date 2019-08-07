@@ -25,11 +25,14 @@ class Builder:
     :type fg: fangraphs.Scraper
     :param ts: Scraper to use to pull team data from baseball_reference.com
     :type ts: baseball_reference.TeamScraper
+    :param es: Scraper to use to pull probable starters from espn
+    :type es: espn.ProbableStartersScraper
     """
-    def __init__(self, lg, team, fg, ts):
+    def __init__(self, lg, team, fg, ts, es):
         self.id_lookup = Lookup
         self.fg = fg
         self.ts = ts
+        self.es = es
         self.week = lg.current_week() + 1
         if self.week >= lg.end_week():
             raise RuntimeError("Season over no more weeks to predict")
@@ -40,13 +43,13 @@ class Builder:
             self.roster = team.roster(self.week)
 
     def __getstate__(self):
-        return (self.fg, self.ts, self.week, self.wk_start_date,
+        return (self.fg, self.ts, self.es, self.week, self.wk_start_date,
                 self.wk_end_date, self.season_end_date, self.roster)
 
     def __setstate__(self, state):
         self.id_lookup = Lookup
-        (self.fg, self.ts, self.week, self.wk_start_date, self.wk_end_date,
-         self.season_end_date, self.roster) = state
+        (self.fg, self.ts, self.es, self.week, self.wk_start_date,
+         self.wk_end_date, self.season_end_date, self.roster) = state
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
@@ -74,19 +77,35 @@ class Builder:
                                             [fangraphs.ScrapeType.HITTER,
                                              fangraphs.ScrapeType.PITCHER]):
             lk = self._find_roster(roster_type)
+            # Need to separate the list since we two kinds of scraping.  One by
+            # fangraph IDs (common) and one by names.  The later is only used
+            # if the fangraphs ID is missing.
             names = lk[lk.fg_id.isna()].mlb_name.to_list()
             ids = lk.fg_id.dropna().to_list()
             if len(names) > 0:
                 names_df = self.fg.scrape(names, id_name='Name',
                                           scrape_as=scrape_type)
+                assert(False), "Need to sub in the player ID into lk"
             else:
-                names_df = None
+                names_df = pd.DataFrame()
             if len(ids) > 0:
                 ids_df = self.fg.scrape(ids, scrape_as=scrape_type)
             else:
-                ids_df = None
+                ids_df = pd.DataFrame()
             df = ids_df.append(names_df, sort=False)
+
+            # Need to sort both the roster lookup and the scrape data by
+            # fangraph ID.  They both need to be in the same sorted order
+            # because we are extracting out the espn_ID from lk and adding it
+            # to the scrape data data frame.
+            lk = lk.sort_values(by='fg_id', axis=0)
+            df = df.sort_values(by='playerid', axis=0)
+            logger.info(lk)
             logger.info(df)
+
+            espn_ids = lk.espn_id.to_list()
+            num_GS = self._num_gs(espn_ids)
+            df = df.assign(WK_GS=pd.Series(num_GS, index=df.index))
             team_abbrevs = self._lookup_teams(df.Team.to_list())
             df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
             wk_g = self._num_games_for_teams(team_abbrevs, True)
@@ -109,56 +128,72 @@ class Builder:
         :return: Summarized predictions
         :rtype: Series
         """
-        # Map of the hitter and pitcher stats.  The key is the stat name in the
-        # data frame and the value is the stat name we store in the series.  We
-        # have this split so that we can have separate aggregate stats for
-        # hitters and pitchers (e.g. BB, H, etc.)
-        hit_stat_cols = {'R': 'R', 'HR': 'HR', 'RBI': 'RBI', 'SB': 'SB',
-                         'AB': 'AB_B', 'H': 'H_B', 'BB': 'BB_B'}
-        pit_stat_cols = {'SO': 'SO', 'SV': 'SV', 'HLD': 'HLD', 'W': 'W',
-                         'G': 'G_P', 'ER': 'ER_P', 'IP': 'IP_P', 'BB': 'BB_P',
-                         'H': 'H_P'}
+        res = self._sum_hit_prediction(df)
+        res = res.append(self._sum_pit_prediction(df))
+        return res
+
+    def _sum_hit_prediction(self, df):
+        temp_stat_cols = ['AB', 'H', 'BB']
+        hit_stat_cols = ['R', 'HR', 'RBI', 'SB'] + temp_stat_cols
 
         res = pd.Series()
-        for stat_in, stat_out in hit_stat_cols.items():
+        for stat in hit_stat_cols:
             val = 0
             for plyr in df.iterrows():
                 if plyr[1]['roster_type'] != 'B':
                     continue
                 if plyr[1]['G'] > 0:
-                    val += plyr[1][stat_in] / plyr[1]['G'] * plyr[1]['WK_G']
-            res[stat_out] = val
+                    val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
+                        plyr[1]['WK_G']
+            res[stat] = val
 
-        for stat_in, stat_out in pit_stat_cols.items():
+        # Handle ratio stats
+        if res['AB'] > 0:
+            res['AVG'] = res['H'] / res['AB']
+        else:
+            res['AVG'] = None
+        if res['AB'] + res['BB'] > 0:
+            res['OBP'] = (res['H'] + res['BB']) / \
+                (res['AB'] + res['BB'])
+        else:
+            res['OBP'] = None
+
+        # Drop the temporary values used to calculate the ratio stats
+        res = res.drop(index=temp_stat_cols)
+
+        return res
+
+    def _sum_pit_prediction(self, df):
+        temp_stat_cols = ['G', 'ER', 'IP', 'BB', 'H']
+        pit_stat_cols = ['SO', 'SV', 'HLD', 'W'] + temp_stat_cols
+
+        res = pd.Series()
+        for stat in pit_stat_cols:
             val = 0
             for plyr in df.iterrows():
                 if plyr[1]['roster_type'] != 'P':
                     continue
-                if plyr[1]['IP'] > 0:
-                    val += plyr[1][stat_in] / plyr[1]['SEASON_G'] \
+                # Account for number of known starts (if applicable).
+                # Otherwise, just revert to an average over the remaining games
+                # on the team's schedule.
+                if plyr[1]['WK_GS'] > 0:
+                    val += plyr[1][stat] / plyr[1]['G'] \
+                        * plyr[1]['WK_GS']
+                elif plyr[1]['IP'] > 0:
+                    val += plyr[1][stat] / plyr[1]['SEASON_G'] \
                         * plyr[1]['WK_G']
-            res[stat_out] = val
+            res[stat] = val
 
         # Handle ratio stats
-        if res['AB_B'] > 0:
-            res['AVG'] = res['H_B'] / res['AB_B']
-        else:
-            res['AVG'] = None
-        if res['AB_B'] + res['BB_B'] > 0:
-            res['OBP'] = (res['H_B'] + res['BB_B']) / \
-                (res['AB_B'] + res['BB_B'])
-        else:
-            res['OBP'] = None
-        if res['IP_P'] > 0:
-            res['WHIP'] = (res['BB_P'] + res['H_P']) / res['IP_P']
-            res['ERA'] = res['ER_P'] * 9 / res['IP_P']
+        if res['IP'] > 0:
+            res['WHIP'] = (res['BB'] + res['H']) / res['IP']
+            res['ERA'] = res['ER'] * 9 / res['IP']
         else:
             res['WHIP'] = None
             res['ERA'] = None
 
         # Delete the temporary values used to calculate the ratio stats
-        res = res.drop(index=['AB_B', 'H_B', 'H_P', 'BB_B', 'BB_P',  'IP_P',
-                              'ER_P', 'G_P'])
+        res = res.drop(index=temp_stat_cols)
 
         return res
 
@@ -185,16 +220,6 @@ class Builder:
             elif conv_r > conv_l:
                 loss += 1
         return (win, loss)
-
-    def _lookup_team(self, team):
-        # TODO: use lahman database instead of this mapping.  The
-        # abbreviation from baseball_id is different then at
-        # baseball_reference.
-        if team == 'WSH':
-            return 'WSN'
-        if team == 'CWS':
-            return 'CHW'
-        return team
 
     def _lookup_teams(self, teams):
         # TODO: use lahman database instead of this mapping.
@@ -319,6 +344,14 @@ class Builder:
             games.append(self._num_games_for_team(abrev, week))
         return games
 
+    def _num_gs(self, espn_ids):
+        df = self.es.scrape()
+        num_GS = []
+        for espn_id in espn_ids:
+            gs = len(df[df.espn_id == espn_id].index)
+            num_GS.append(gs)
+        return num_GS
+
     def normalized(self, name):
         return unicodedata.normalize('NFD', name).encode(
             'ascii', 'ignore').decode('utf-8')
@@ -386,9 +419,8 @@ class Builder:
         :param pos: The short version of the position.
         :type pos: str
         """
-        if not self.player_exists(player_name):
-            raise ValueError("Player not found on roster")
-
         for plyr in self.roster:
             if self.normalized(player_name) == self.normalized(plyr['name']):
                 plyr['selected_position'] = pos
+                return
+        raise ValueError("Player not found on roster")
