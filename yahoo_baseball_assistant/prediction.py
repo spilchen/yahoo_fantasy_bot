@@ -119,6 +119,8 @@ class Builder:
             df = df.assign(SEASON_G=pd.Series(sea_g, index=df.index))
             roster_type = [roster_type] * len(df.index)
             df = df.assign(roster_type=pd.Series(roster_type, index=df.index))
+            e_pos = [e[1]["eligible_positions"] for e in lk.iterrows()]
+            df = df.assign(eligible_positions=pd.Series(e_pos, index=df.index))
             res = res.append(df, sort=False)
         return res
 
@@ -274,6 +276,10 @@ class Builder:
             if len(one_lk.index) == 0:
                 raise ValueError("Was not able to lookup player: {}".format(
                     plyr))
+
+            ep_series = pd.Series([plyr["eligible_positions"]], dtype="object",
+                                  index=one_lk.index)
+            one_lk = one_lk.assign(eligible_positions=ep_series)
 
             if lk is None:
                 lk = one_lk
