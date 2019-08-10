@@ -3,6 +3,7 @@
 from baseball_scraper import fangraphs
 from baseball_id import Lookup
 import pandas as pd
+import numpy as np
 import unicodedata
 import datetime
 import logging
@@ -27,12 +28,15 @@ class Builder:
     :type ts: baseball_reference.TeamScraper
     :param es: Scraper to use to pull probable starters from espn
     :type es: espn.ProbableStartersScraper
+    :param tss: Scraper to use to pull team list data from baseball_reference
+    :type tss: baseball_reference.TeamSummaryScraper
     """
-    def __init__(self, lg, team, fg, ts, es):
+    def __init__(self, lg, team, fg, ts, es, tss):
         self.id_lookup = Lookup
         self.fg = fg
         self.ts = ts
         self.es = es
+        self.tss = tss
         self.week = lg.current_week() + 1
         if self.week >= lg.end_week():
             raise RuntimeError("Season over no more weeks to predict")
@@ -43,12 +47,13 @@ class Builder:
             self.roster = team.roster(self.week)
 
     def __getstate__(self):
-        return (self.fg, self.ts, self.es, self.week, self.wk_start_date,
-                self.wk_end_date, self.season_end_date, self.roster)
+        return (self.fg, self.ts, self.es, self.tss, self.week,
+                self.wk_start_date, self.wk_end_date, self.season_end_date,
+                self.roster)
 
     def __setstate__(self, state):
         self.id_lookup = Lookup
-        (self.fg, self.ts, self.es, self.week, self.wk_start_date,
+        (self.fg, self.ts, self.es, self.tss, self.week, self.wk_start_date,
          self.wk_end_date, self.season_end_date, self.roster) = state
 
     def set_id_lookup(self, lk):
@@ -179,7 +184,7 @@ class Builder:
                 if plyr[1]['WK_GS'] > 0:
                     val += plyr[1][stat] / plyr[1]['G'] \
                         * plyr[1]['WK_GS']
-                elif plyr[1]['IP'] > 0:
+                elif plyr[1]['WK_G'] > 0:
                     val += plyr[1][stat] / plyr[1]['SEASON_G'] \
                         * plyr[1]['WK_G']
             res[stat] = val
@@ -222,71 +227,17 @@ class Builder:
         return (win, loss)
 
     def _lookup_teams(self, teams):
-        # TODO: use lahman database instead of this mapping.
         a = []
+        tl_df = self.tss.scrape(self.wk_start_date.year)
         for team in teams:
-            if team == "Yankees":
-                a.append("NYY")
-            elif team == "Rays":
-                a.append("TB")
-            elif team == "Red Sox":
-                a.append("BOS")
-            elif team == "Blue Jays":
-                a.append("TOR")
-            elif team == "Orioles":
-                a.append("BAL")
-            elif team == "Twins":
-                a.append("MIN")
-            elif team == "Indians":
-                a.append("CLE")
-            elif team == "White Sox":
-                a.append("CHW")
-            elif team == "Royals":
-                a.append("KC")
-            elif team == "Tigers":
-                a.append("DET")
-            elif team == "Astros":
-                a.append("HOU")
-            elif team == "Athletics":
-                a.append("OAK")
-            elif team == "Angels":
-                a.append("LAA")
-            elif team == "Rangers":
-                a.append("TEX")
-            elif team == "Mariners":
-                a.append("SEA")
-            elif team == "Braves":
-                a.append("ATL")
-            elif team == "Nationals":
-                a.append("WSN")
-            elif team == "Phillies":
-                a.append("PHI")
-            elif team == "Mets":
-                a.append("NYM")
-            elif team == "Marlins":
-                a.append("MIA")
-            elif team == "Cardinals":
-                a.append("STL")
-            elif team == "Cubs":
-                a.append("CHC")
-            elif team == "Brewers":
-                a.append("MIL")
-            elif team == "Reds":
-                a.append("CIN")
-            elif team == "Pirates":
-                a.append("PIT")
-            elif team == "Dodgers":
-                a.append("LAD")
-            elif team == "Giants":
-                a.append("SF")
-            elif team == "Diamondbacks":
-                a.append("ARI")
-            elif team == "Padres":
-                a.append("SD")
-            elif team == "Rockies":
-                a.append("COL")
+            # In case we are given a team list with NaN (i.e. player isn't on
+            # any team)
+            if type(team) is str:
+                a.append(tl_df[tl_df.Franchise.str.endswith(team)].
+                         abbrev.iloc(0)[0])
             else:
-                raise RuntimeError("Unknown team: {}".format(team))
+                assert(np.isnan(team))
+                a.append(None)
         return a
 
     def _find_roster(self, position_type):
@@ -331,6 +282,8 @@ class Builder:
         return lk
 
     def _num_games_for_team(self, abrev, week):
+        if abrev is None:
+            return 0
         if week:
             self.ts.set_date_range(self.wk_start_date, self.wk_end_date)
         else:

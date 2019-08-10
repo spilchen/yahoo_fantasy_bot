@@ -64,7 +64,7 @@ def get_opp_teams(args, lg, my_tm):
     return teams
 
 
-def init_team_bldrs(args, lg, fg, ts, es):
+def init_team_bldrs(args, lg, fg, ts, es, tss):
     team_bldrs = {}
     for tm in lg.teams():
         if args['-c']:
@@ -74,7 +74,7 @@ def init_team_bldrs(args, lg, fg, ts, es):
                     team_bldrs[tm['team_key']] = pickle.load(f)
                 continue
         team_bldrs[tm['team_key']] = prediction.Builder(
-            lg, lg.to_team(tm['team_key']), fg, ts, es)
+            lg, lg.to_team(tm['team_key']), fg, ts, es, tss)
     return team_bldrs
 
 
@@ -103,10 +103,11 @@ if __name__ == '__main__':
     my_tm = team.Team(sc, team_key)
     fg = fangraphs.Scraper("Depth Charts (RoS)")
     ts = baseball_reference.TeamScraper()
+    tss = baseball_reference.TeamSummaryScraper()
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     es = espn.ProbableStartersScraper(start_date, end_date)
 
-    team_bldrs = init_team_bldrs(args, lg, fg, ts, es)
+    team_bldrs = init_team_bldrs(args, lg, fg, ts, es, tss)
     df = team_bldrs[team_key].predict()
     my_sum = team_bldrs[team_key].sum_prediction(df)
     print_team("Lumber Kings", df, my_sum)

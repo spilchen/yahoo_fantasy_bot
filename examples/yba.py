@@ -422,6 +422,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.team_bldrs = {}
         fg = fangraphs.Scraper("Depth Charts (RoS)")
         ts = baseball_reference.TeamScraper()
+        tss = baseball_reference.TeamSummaryScraper()
         (start_date, end_date) = self.lg.week_date_range(
             self.lg.current_week() + 1)
         es = espn.ProbableStartersScraper(start_date, end_date)
@@ -440,7 +441,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
                     continue
             logger.info("Building new team {} ...".format(tm['team_key']))
             self.team_bldrs[tm['team_key']] = prediction.Builder(
-                self.lg, self.lg.to_team(tm['team_key']), fg, ts, es)
+                self.lg, self.lg.to_team(tm['team_key']), fg, ts, es, tss)
             self.team_bldrs[tm['team_key']].save_on_exit = True
 
     def save_cached_team_bldrs(self):
