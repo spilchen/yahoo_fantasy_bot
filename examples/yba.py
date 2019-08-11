@@ -17,7 +17,7 @@ import time
 import math
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
-from yahoo_baseball_assistant import prediction
+from yahoo_baseball_assistant import prediction, roster
 from baseball_scraper import fangraphs, baseball_reference, espn
 
 
@@ -132,7 +132,7 @@ roster.  Press Cancel to quit the application.
 
     def beforeEditing(self):
         self.roster.values = []
-        my_team = self.parentApp.team_bldrs[self.parentApp.team_key]
+        my_team = self.parentApp.team_conts[self.parentApp.team_key]
         for plyr in my_team.get_roster():
             self.roster.values.append([plyr['selected_position'],
                                        plyr['name']])
@@ -177,8 +177,8 @@ class PredictedRosterStatForm(npyscreen.Form):
         self.team_key = self.add(npyscreen.TitleFixedText,
                                  name='Team Key',
                                  value=self.parentApp.predict_team['team_key'])
-        df = self.parentApp.team_bldrs[
-            self.parentApp.predict_team['team_key']].predict()
+        df = self.parentApp.pred_bldr.predict(self.parentApp.team_conts[
+            self.parentApp.predict_team['team_key']])
         self.roster = self.add(
             npyscreen.GridColTitles, name='Roster',
             col_titles=self.parentApp.get_columns(),
@@ -329,9 +329,9 @@ opponent for your next week.
 
     def beforeEditing(self):
         npyscreen.notify("Scraping data for prediction.  Please wait...")
-        df = self.parentApp.team_bldrs[self.parentApp.team_key].predict()
-        my_sum = self.parentApp.team_bldrs[self.parentApp.team_key] \
-            .sum_prediction(df)
+        df = self.parentApp.pred_bldr.predict(
+            self.parentApp.team_conts[self.parentApp.team_key])
+        my_sum = self.parentApp.scorer.summarize(df)
         logging.info("My prediction:\n{}".format(my_sum))
         for name, picker in zip([None, None, None] +
                                 self.parentApp.get_hit_stats() +
@@ -355,14 +355,13 @@ opponent for your next week.
         self.roster.values = []
         for tm in teams:
             logger.info("Scraping team: " + str(tm))
-            df = self.parentApp.team_bldrs[tm['team_key']].predict()
+            df = self.parentApp.pred_bldr.predict(
+                self.parentApp.team_conts[tm['team_key']])
             logger.info("Sum prediction: " + str(tm))
-            opp_sum = self.parentApp.team_bldrs[tm['team_key']] \
-                .sum_prediction(df)
+            opp_sum = self.parentApp.scorer.summarize(df)
             logger.info(opp_sum)
             logger.info("Score: " + str(tm))
-            (w, l) = self.parentApp.team_bldrs[tm['team_key']].score(my_sum,
-                                                                     opp_sum)
+            (w, l) = self.parentApp.scorer.compare(my_sum, opp_sum)
             logger.info("Scoring result: {} - {}".format(w, l))
             team_res = []
             # Add an asterisk beside the name to denote the week opponent
@@ -402,7 +401,8 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.predict_team = None
         self.my_tm = team.Team(self.sc, self.team_key)
         self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
-        self.init_team_bldrs()
+        self.init_teams()
+        self.scorer = roster.Scorer()
         self.teams = None
         self.selected_player = None
 
@@ -418,38 +418,65 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.addFormClass('CHANGEPOS', ChangePositionForm,
                           name='Change Position')
 
-    def init_team_bldrs(self):
-        self.team_bldrs = {}
-        fg = fangraphs.Scraper("Depth Charts (RoS)")
-        ts = baseball_reference.TeamScraper()
-        tss = baseball_reference.TeamSummaryScraper()
-        (start_date, end_date) = self.lg.week_date_range(
-            self.lg.current_week() + 1)
-        es = espn.ProbableStartersScraper(start_date, end_date)
+    def pickle_if_recent(self, fn):
+        if os.path.exists(fn):
+            mtime = os.path.getmtime(fn)
+            cur_time = int(time.time())
+            sec_per_day = 24 * 60 * 60
+            if cur_time - mtime <= sec_per_day:
+                logger.info("Reading {} from cache...".format(fn))
+                with open(fn, 'rb') as f:
+                    obj = pickle.load(f)
+                    # Don't save this to file on exit.
+                    obj.save_on_exit = False
+                    return obj
+        return None
+
+    def init_teams(self):
+        fg = self.pickle_if_recent("fangraphs.predictions.pkl")
+        if fg is None:
+            fg = fangraphs.Scraper("Depth Charts (RoS)")
+        ts = self.pickle_if_recent("bref.teams.pkl")
+        if ts is None:
+            ts = baseball_reference.TeamScraper()
+        tss = self.pickle_if_recent("bref.teamsummary.pkl")
+        if tss is None:
+            tss = baseball_reference.TeamSummaryScraper()
+            tss.save_on_exit = True
+        es = self.pickle_if_recent("espn.starters.pkl")
+        if es is None:
+            (start_date, end_date) = self.lg.week_date_range(
+                self.lg.current_week() + 1)
+            es = espn.ProbableStartersScraper(start_date, end_date)
+            es.save_on_exit = True
+
+        self.team_conts = {}
         for tm in self.lg.teams():
             fn = "{}.pkl".format(tm['team_key'])
-            if os.path.exists(fn):
-                mtime = os.path.getmtime(fn)
-                cur_time = int(time.time())
-                sec_per_day = 24 * 60 * 60
-                if cur_time - mtime <= sec_per_day:
-                    logger.info("Reading team {} from cache...".format(fn))
-                    with open(fn, 'rb') as f:
-                        self.team_bldrs[tm['team_key']] = pickle.load(f)
-                        # Don't save this to file on exit.
-                        self.team_bldrs[tm['team_key']].save_on_exit = False
-                    continue
-            logger.info("Building new team {} ...".format(tm['team_key']))
-            self.team_bldrs[tm['team_key']] = prediction.Builder(
-                self.lg, self.lg.to_team(tm['team_key']), fg, ts, es, tss)
-            self.team_bldrs[tm['team_key']].save_on_exit = True
+            obj = self.pickle_if_recent(fn)
+            if obj is None:
+                logger.info("Building new team {} ...".format(tm['team_key']))
+                self.team_conts[tm['team_key']] = roster.Container(
+                    self.lg, self.lg.to_team(tm['team_key']))
+                self.team_conts[tm['team_key']].save_on_exit = True
+            else:
+                self.team_const[tm['team_key']] = obj
 
-    def save_cached_team_bldrs(self):
-        for team_key, bldr in self.team_bldrs.items():
-            if bldr.save_on_exit:
-                fn = "{}.pkl".format(team_key)
-                with open(fn, 'wb') as f:
-                    pickle.dump(bldr, f)
+        obj = self.pickle_if_recent("Builder.pkl")
+        if obj is None:
+            self.pred_bldr = prediction.Builder(self.lg, fg, ts, es, tss)
+        else:
+            self.pred_bldr = obj
+
+    def save_caches(self):
+        self.save_cache_if_nec(self.pred_bldr, "Builder.pkl")
+        for team_key, cont in self.team_conts.items():
+            self.save_cache_if_nec(cont, "Container.{}.pkl".format(team_key))
+
+    def save_cache_if_nec(self, obj, fn):
+        if obj.save_on_exit:
+            with open(fn, "wb") as f:
+                pickle.dump(obj, f)
 
     def gen_team(self, df):
         roster = []
@@ -490,13 +517,13 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         return self.teams
 
     def del_player(self, player_name):
-        self.team_bldrs[self.team_key].del_player(player_name)
+        self.team_conts[self.team_key].del_player(player_name)
 
     def add_player(self, player_name, pos):
-        self.team_bldrs[self.team_key].add_player(player_name, pos)
+        self.team_conts[self.team_key].add_player(player_name, pos)
 
     def change_position(self, player_name, pos):
-        self.team_bldrs[self.team_key].change_position(player_name, pos)
+        self.team_conts[self.team_key].change_position(player_name, pos)
 
 
 if __name__ == '__main__':
@@ -504,4 +531,4 @@ if __name__ == '__main__':
     JSON_FILE = args['<json>']
     app = YahooAssistant()
     app.run()
-    app.save_cached_team_bldrs()
+    app.save_caches()

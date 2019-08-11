@@ -3,7 +3,7 @@
 """Command line interface to get predictions on a roster
 
 Usage:
-  predict.py [-o <team> | -a] [-c|-s] <json>
+  predict.py [-o <team> | -a] [-cs] <json>
 
   <json>     The name of the JSON that has bearer token.  This can be generated
              from init_oauth_env.py.
@@ -20,7 +20,7 @@ Other options:
 from docopt import docopt
 from yahoo_oauth import OAuth2
 from yahoo_fantasy_api import league, game, team
-from yahoo_baseball_assistant import prediction
+from yahoo_baseball_assistant import prediction, roster
 from baseball_scraper import fangraphs, baseball_reference, espn
 import logging
 import pickle
@@ -64,25 +64,76 @@ def get_opp_teams(args, lg, my_tm):
     return teams
 
 
-def init_team_bldrs(args, lg, fg, ts, es, tss):
-    team_bldrs = {}
+def init_teams(args, lg, fg, ts, es, tss):
+    pred_bldr = None
+    if args['-c']:
+        fn = "Builder.pkl"
+        if os.path.exists(fn):
+            with open(fn, 'rb') as f:
+                pred_bldr = pickle.load(f)
+    if pred_bldr is None:
+        pred_bldr = prediction.Builder(lg, fg, ts, es, tss)
+    team_containers = {}
     for tm in lg.teams():
         if args['-c']:
-            fn = "{}.pkl".format(tm['team_key'])
+            fn = "Container.{}.pkl".format(tm['team_key'])
             if os.path.exists(fn):
                 with open(fn, 'rb') as f:
-                    team_bldrs[tm['team_key']] = pickle.load(f)
+                    team_containers[tm['team_key']] = pickle.load(f)
                 continue
-        team_bldrs[tm['team_key']] = prediction.Builder(
-            lg, lg.to_team(tm['team_key']), fg, ts, es, tss)
-    return team_bldrs
+        team_containers[tm['team_key']] = roster.Container(
+            lg, lg.to_team(tm['team_key']))
+    return (pred_bldr, team_containers)
 
 
-def save_team_bldrs(team_bldrs):
-    for team_key, bldr in team_bldrs.items():
-        fn = "{}.pkl".format(team_key)
+def save_teams(pred_bldr, team_containers):
+    fn = "Builder.pkl"
+    with open(fn, "wb") as f:
+        pickle.dump(pred_bldr, f)
+    for team_key, cont in team_containers.items():
+        fn = "Container.{}.pkl".format(team_key)
         with open(fn, "wb") as f:
-            pickle.dump(bldr, f)
+            pickle.dump(cont, f)
+
+
+def save_scrapers(fg, ts, tss):
+    fn = "fangraphs.predictions.pkl"
+    with open(fn, "wb") as f:
+        pickle.dump(fg, f)
+    fn = "bref.teams.pkl"
+    with open(fn, "wb") as f:
+        pickle.dump(ts, f)
+    fn = "bref.teamsummary.pkl"
+    with open(fn, "wb") as f:
+        pickle.dump(tss, f)
+
+
+def init_scrapers():
+    fg = None
+    ts = None
+    tss = None
+    if args['-c']:
+        fn = "fangraphs.predictions.pkl"
+        if os.path.exists(fn):
+            with open(fn, 'rb') as f:
+                fg = pickle.load(f)
+        fn = "bref.teams.pkl"
+        if os.path.exists(fn):
+            with open(fn, 'rb') as f:
+                ts = pickle.load(f)
+        fn = "bref.teamsummary.pkl"
+        if os.path.exists(fn):
+            with open(fn, 'rb') as f:
+                tss = pickle.load(f)
+
+    if fg is None:
+        fg = fangraphs.Scraper("Depth Charts (RoS)")
+    if ts is None:
+        ts = baseball_reference.TeamScraper()
+    if tss is None:
+        tss = baseball_reference.TeamSummaryScraper()
+
+    return (fg, ts, tss)
 
 
 if __name__ == '__main__':
@@ -101,25 +152,26 @@ if __name__ == '__main__':
     lg = league.League(sc, league_id[0])
     team_key = lg.team_key()
     my_tm = team.Team(sc, team_key)
-    fg = fangraphs.Scraper("Depth Charts (RoS)")
-    ts = baseball_reference.TeamScraper()
-    tss = baseball_reference.TeamSummaryScraper()
+    (fg, ts, tss) = init_scrapers()
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     es = espn.ProbableStartersScraper(start_date, end_date)
 
-    team_bldrs = init_team_bldrs(args, lg, fg, ts, es, tss)
-    df = team_bldrs[team_key].predict()
-    my_sum = team_bldrs[team_key].sum_prediction(df)
+    (pred_bldr, team_containers) = init_teams(args, lg, fg, ts, es, tss)
+    df = pred_bldr.predict(team_containers[team_key])
+
+    scorer = roster.Scorer()
+    my_sum = scorer.summarize(df)
     print_team("Lumber Kings", df, my_sum)
 
     # Compare against a bunch of teams
     teams = get_opp_teams(args, lg, my_tm)
     for tm in teams:
-        df = team_bldrs[tm['team_key']].predict()
-        opp_sum = team_bldrs[tm['team_key']].sum_prediction(df)
+        df = pred_bldr.predict(team_containers[tm['team_key']])
+        opp_sum = scorer.summarize(df)
         print_team(tm['name'], df, opp_sum)
-        (w, l) = team_bldrs[tm['team_key']].score(my_sum, opp_sum)
+        (w, l) = scorer.compare(my_sum, opp_sum)
         print("Prediction result: {} - {}".format(w, l))
 
     if args['-s']:
-        save_team_bldrs(team_bldrs)
+        save_scrapers(fg, ts, tss)
+        save_teams(pred_bldr, team_containers)
