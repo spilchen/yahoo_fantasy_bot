@@ -465,6 +465,7 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         obj = self.pickle_if_recent("Builder.pkl")
         if obj is None:
             self.pred_bldr = prediction.Builder(self.lg, fg, ts, es, tss)
+            self.pred_bldr.save_on_exit = True
         else:
             self.pred_bldr = obj
 
