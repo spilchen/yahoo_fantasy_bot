@@ -9,3 +9,4 @@ anaconda-project-local.yml
 *.egg-info/
 *.pkl
 *.log
+.ropeproject

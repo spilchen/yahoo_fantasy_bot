@@ -109,6 +109,11 @@ class Builder:
             e_pos = [e[1]["eligible_positions"] for e in lk.iterrows()]
             df = df.assign(eligible_positions=pd.Series(e_pos, index=df.index))
             res = res.append(df, sort=False)
+
+        # Add a column that will track the selected position of each player.
+        # It is currently set to NaN since other modules fill that in.
+        df = df.assign(selected_position=np.nan)
+
         return res
 
     def _lookup_teams(self, teams):
