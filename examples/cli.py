@@ -19,7 +19,7 @@ Other options:
 """
 from docopt import docopt
 from yahoo_oauth import OAuth2
-from yahoo_fantasy_api import league, game, team
+import yahoo_fantasy_api as yfa
 from yahoo_baseball_assistant import prediction, roster
 from baseball_scraper import fangraphs, baseball_reference, espn
 import logging
@@ -147,11 +147,11 @@ if __name__ == '__main__':
     logging.getLogger('yahoo_oauth').setLevel('WARNING')
     logging.getLogger('chardet.charsetprober').setLevel('WARNING')
     sc = OAuth2(None, None, from_file=args['<json>'])
-    gm = game.Game(sc, 'mlb')
+    gm = yfa.Game(sc, 'mlb')
     league_id = gm.league_ids(year=2019)
-    lg = league.League(sc, league_id[0])
+    lg = yfa.League(sc, league_id[0])
     team_key = lg.team_key()
-    my_tm = team.Team(sc, team_key)
+    my_tm = yfa.Team(sc, team_key)
     (fg, ts, tss) = init_scrapers()
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     es = espn.ProbableStartersScraper(start_date, end_date)

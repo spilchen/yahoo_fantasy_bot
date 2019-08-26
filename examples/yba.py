@@ -16,7 +16,7 @@ import os
 import time
 import math
 from yahoo_oauth import OAuth2
-from yahoo_fantasy_api import league, game, team
+import yahoo_fantasy_api as yfa
 from yahoo_baseball_assistant import prediction, roster
 from baseball_scraper import fangraphs, baseball_reference, espn
 
@@ -394,12 +394,12 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         logging.getLogger('yahoo_oauth').setLevel('WARNING')
         logging.getLogger('chardet.charsetprober').setLevel('WARNING')
         self.sc = OAuth2(None, None, from_file=JSON_FILE)
-        self.gm = game.Game(self.sc, 'mlb')
+        self.gm = yfa.Game(self.sc, 'mlb')
         league_id = self.gm.league_ids(year=2019)
-        self.lg = league.League(self.sc, league_id[0])
+        self.lg = yfa.League(self.sc, league_id[0])
         self.team_key = self.lg.team_key()
         self.predict_team = None
-        self.my_tm = team.Team(self.sc, self.team_key)
+        self.my_tm = yfa.Team(self.sc, self.team_key)
         self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
         self.init_teams()
         self.scorer = roster.Scorer()
