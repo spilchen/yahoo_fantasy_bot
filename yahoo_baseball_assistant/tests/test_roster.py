@@ -207,3 +207,90 @@ def test_fit_enumerate_2(bldr, empty_roster):
     assert(edf.at[3, 'selected_position'] == 'CF')
     with pytest.raises(StopIteration):
         edf = next(itr)
+
+
+def test_fit_with_duplicate_positions(bldr, empty_roster):
+    plyr = pd.Series(["Stieb", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(empty_roster, plyr)
+    plyr = pd.Series(["Clancy", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Cerutti", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Flanigan", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Alexander", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Fernandez", ['SP'], np.nan], index=RBLDR_COLS)
+    with pytest.raises(LookupError):
+        df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Claudell", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    print(df)
+    assert(len(df.index) == 6)
+    assert(df.at[5, 'name'] == 'Claudell')
+    assert(df.at[5, 'selected_position'] == 'RP')
+
+
+def test_fit_with_multiple_duplicate_positions(bldr, empty_roster):
+    plyr = pd.Series(["Stieb", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(empty_roster, plyr)
+    plyr = pd.Series(["Clancy", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Cerutti", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Flanigan", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Alexander", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    print(df)
+    assert(len(df[df.selected_position == 'SP'].index) == 5)
+    plyr = pd.Series(["Fernandez", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Claudell", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Key", ['SP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Guzman", ['SP'], np.nan], index=RBLDR_COLS)
+    print(df)
+    assert(len(df[df.selected_position == 'RP'].index) == 3)
+    with pytest.raises(LookupError):
+        df = bldr.fit_if_space(df, plyr)
+
+
+def test_fit_enumerate_dup_position(bldr, empty_roster):
+    plyr = pd.Series(["Henke", ['RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(empty_roster, plyr)
+    plyr = pd.Series(["Ward", ['RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Timlin", ['RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Eichorn", ['RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Cox", ['RP'], np.nan], index=RBLDR_COLS)
+    df = bldr.fit_if_space(df, plyr)
+    plyr = pd.Series(["Castillo", ['RP'], np.nan], index=RBLDR_COLS)
+    with pytest.raises(LookupError):
+        df = bldr.fit_if_space(df, plyr)
+    itr = bldr.enumerate_fit(df, plyr)
+
+    def names(df):
+        return [e['name'] for i, e in
+                df[df.selected_position.notnull()].iterrows()]
+
+    edf = next(itr)
+    print(edf)
+    assert(names(edf) == ['Ward', 'Timlin', 'Eichorn', 'Cox', 'Castillo'])
+    edf = next(itr)
+    print(edf)
+    assert(names(edf) == ['Henke', 'Timlin', 'Eichorn', 'Cox', 'Castillo'])
+    edf = next(itr)
+    print(edf)
+    assert(names(edf) == ['Henke', 'Ward', 'Eichorn', 'Cox', 'Castillo'])
+    edf = next(itr)
+    print(edf)
+    assert(names(edf) == ['Henke', 'Ward', 'Timlin', 'Cox', 'Castillo'])
+    edf = next(itr)
+    print(edf)
+    assert(names(edf) == ['Henke', 'Ward', 'Timlin', 'Eichorn', 'Castillo'])
+    with pytest.raises(StopIteration):
+        edf = next(itr)

@@ -204,8 +204,14 @@ class Scorer:
 
 class Builder:
     """Class that generates roster permuations suitable for evaluation"""
-    def __init__(self):
-        self.positions = ["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF", "U"]
+    def __init__(self, positions):
+        self.positions = positions
+        self.pos_count = {}
+        for p in positions:
+            if p in self.pos_count:
+                self.pos_count[p] += 1
+            else:
+                self.pos_count[p] = 1
 
     def fit_if_space(self, roster, player):
         """Fit a player onto a roster if there is space.
@@ -228,20 +234,24 @@ class Builder:
         # Search if any of the players eligible_positions are open.  Then it is
         # an easy fit.
         for pos in player.eligible_positions:
-            if self._get_player_by_pos(roster, pos) is None:
+            if self._has_empty_position_slot(roster, pos):
                 player.selected_position = pos
                 return roster.append(player, ignore_index=True)
 
+        checked_pos = {}
+        for p in self.positions:
+            checked_pos[p] = 0
+
         # Look through the other players already starting at the new players
         # positions.  If any of them can move to empty spot then we can fit.
-        checked_pos = []
         for pos in player.eligible_positions:
-            plyr_at_pos = self._get_player_by_pos(roster, pos)
-            if self._swap_eligible_pos_recurse(roster, plyr_at_pos,
-                                               checked_pos):
-                assert(self._get_player_by_pos(roster, pos) is None)
-                player.selected_position = pos
-                return roster.append(player, ignore_index=True)
+            for occurance in range(self.pos_count[pos]):
+                plyr_at_pos = self._get_player_by_pos(roster, pos, occurance)
+                if self._swap_eligible_pos_recurse(roster, plyr_at_pos,
+                                                   checked_pos):
+                    assert(self._has_empty_position_slot(roster, pos))
+                    player.selected_position = pos
+                    return roster.append(player, ignore_index=True)
 
         raise LookupError("No space for player on roster")
 
@@ -259,9 +269,16 @@ class Builder:
         combinations to get the player to fit.
         :rtype: iterable
         """
+        # Keeps track of the number of times we checked each position
+        checked_pos = {}
+
         for pos in self.positions:
             orig_roster = roster.copy(deep=True)
-            pos_player = self._get_player_by_pos(roster, pos)
+            if pos not in checked_pos:
+                checked_pos[pos] = 0
+            else:
+                checked_pos[pos] += 1
+            pos_player = self._get_player_by_pos(roster, pos, checked_pos[pos])
             if pos_player is None:
                 continue
             pos_player.selected_position = np.nan
@@ -274,12 +291,24 @@ class Builder:
                 roster = orig_roster
                 player.selected_position = np.nan
 
-    def _get_player_by_pos(self, roster, pos):
+    def _get_player_by_pos(self, roster, pos, occurance):
+        cum_occurance = 0
         for i in range(len(roster.index)):
             plyr = roster.loc[i]
             if plyr.selected_position == pos:
-                return plyr
+                if cum_occurance == occurance:
+                    return plyr
+                cum_occurance += 1
         return None
+
+    def _get_num_players_at_pos(self, roster, pos):
+        """Return the number of players the roster has at the given position"""
+        return len(roster[roster.selected_position == pos].index)
+
+    def _has_empty_position_slot(self, roster, pos):
+        assert(pos in self.pos_count)
+        num = self._get_num_players_at_pos(roster, pos)
+        return num < self.pos_count[pos]
 
     def _swap_eligible_pos_recurse(self, roster, player, checked_pos):
         """Recursively swap positions with players until all positions are used
@@ -300,21 +329,23 @@ class Builder:
         # Check if player can change their position to an empty spot
         for pos in player.eligible_positions:
             if pos != player.selected_position:
-                if self._get_player_by_pos(roster, pos) is None:
+                if self._has_empty_position_slot(roster, pos):
                     player.selected_position = pos
                     return True
 
         # Recursively check each of the positions that the player plays to
         # see if they can switch out to an empty spot.
         for pos in player.eligible_positions:
-            if pos != player.selected_position and pos not in checked_pos:
-                other_plyr = self._get_player_by_pos(roster, pos)
-                assert(other_plyr is not None), "Nobody for " + pos
-                checked_pos.append(pos)
-                if self._swap_eligible_pos_recurse(roster, other_plyr,
-                                                   checked_pos):
-                    assert(self._get_player_by_pos(roster, pos) is None)
-                    player.selected_position = pos
-                    return True
-
+            for _ in range(self.pos_count[pos]):
+                if pos != player.selected_position and \
+                        checked_pos[pos] < self.pos_count[pos]:
+                    other_plyr = self._get_player_by_pos(roster, pos,
+                                                         checked_pos[pos])
+                    assert(other_plyr is not None), "Nobody for " + pos
+                    checked_pos[pos] += 1
+                    if self._swap_eligible_pos_recurse(roster, other_plyr,
+                                                       checked_pos):
+                        assert(self._has_empty_position_slot(roster, pos))
+                        player.selected_position = pos
+                        return True
         return False

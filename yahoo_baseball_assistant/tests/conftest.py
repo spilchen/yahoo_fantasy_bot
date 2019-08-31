@@ -15,5 +15,7 @@ def empty_roster():
 
 @pytest.fixture
 def bldr():
-    b = roster.Builder()
+    b = roster.Builder(["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF", "U",
+                        "SP", "SP", "SP", "SP", "SP",
+                        "RP", "RP", "RP", "RP", "RP"])
     yield b
