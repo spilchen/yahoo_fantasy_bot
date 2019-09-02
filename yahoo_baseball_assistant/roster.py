@@ -60,11 +60,9 @@ class Container:
 
         This will raise an error if the player already exists on the roster.
 
-        :param player_name: Full name of the player to delete.  The player name
-               must this exactly; with the exception of accents, which are
-               normalized out
+        :param player_name: Full name of the player to add.
         :type player_name: str
-        :param pos: The short version of the position.
+        :param pos: The short version of the selected position.
         :type pos: str
         """
         if self.player_exists(player_name):
@@ -349,3 +347,48 @@ class Builder:
                         player.selected_position = pos
                         return True
         return False
+
+
+class PlayerSelector:
+    RANK_STATS_DESCENDING = ["ERA", "WHIP"]
+
+    """Class that will select players from a container to include on a roster.
+
+    The roster container it is given should be a pool of all available players
+    that can make up a roster.  The players select are players that are tops
+    in the stats categories.
+
+    :param player_pool: Pool of players that we will pick from
+    :type player_pool: Container
+    """
+    def __init__(self, player_pool):
+        self.ppool = player_pool
+
+    def rank(self, stat_categories):
+        """Rank players in the player pool according to the stat categories
+
+        :param stat_categories: List of the stat categories that the fantasy
+               league uses.
+        :type stat_categories: list(str)
+        """
+        self.ppool['rank'] = 0
+        for stat in stat_categories:
+            self.ppool['rank'] += self.ppool[stat].rank(
+                    ascending=self._is_stat_ascending(stat))
+
+    def select(self):
+        """Iterate over players in the pool according to the rank
+
+        This is to be called after rank().  It will return the players starting
+        with the top ranked player.
+        """
+        df = self.ppool.sort_values(by=['rank'], ascending=False)
+        print(df)
+        for plyr_tuple in df.iterrows():
+            yield plyr_tuple[1]
+
+    def _is_stat_ascending(self, stat):
+        if stat in self.RANK_STATS_DESCENDING:
+            return False
+        else:
+            return True

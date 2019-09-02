@@ -294,3 +294,61 @@ def test_fit_enumerate_dup_position(bldr, empty_roster):
     assert(names(edf) == ['Henke', 'Ward', 'Timlin', 'Eichorn', 'Castillo'])
     with pytest.raises(StopIteration):
         edf = next(itr)
+
+
+def test_selector_rank_hitters(fake_player_selector):
+    ppool = fake_player_selector.ppool
+    fake_player_selector.rank(['HR', 'OBP'])
+    df = ppool.sort_values(by=['rank'], ascending=False)
+    print(df)
+    assert(len(ppool.index) == 15)
+    itr = df.iterrows()
+    (i, p) = next(itr)
+    assert(p['name'] == 'McGriff')
+    (i, p) = next(itr)
+    assert(p['name'] == 'Gruber')
+    (i, p) = next(itr)
+    assert(p['name'] == 'Olerud')
+    (i, p) = next(itr)
+    assert(p['name'] == 'Borders')
+
+
+def test_selector_rank_pitchers(fake_player_selector):
+    ppool = fake_player_selector.ppool
+    fake_player_selector.rank(['W', 'ERA'])
+    df = ppool.sort_values(by=['rank'], ascending=False)
+    print(df)
+    assert(len(ppool.index) == 15)
+    itr = df.iterrows()
+    (i, p) = next(itr)
+    print(p)
+    assert(p['name'] == 'Steib')
+    (i, p) = next(itr)
+    print(p)
+    assert(p['name'] == 'Key')
+    (i, p) = next(itr)
+    print(p)
+    assert(p['name'] == 'Wells')
+    (i, p) = next(itr)
+    print(p)
+    assert(p['name'] == 'Stottlemyre')
+    (i, p) = next(itr)
+    print(p)
+    assert(p['name'] == 'Cerutti')
+
+
+def test_selector_hitters_iter(fake_player_selector):
+    fake_player_selector.rank(['HR', 'OBP'])
+    expected_order = ["McGriff", "Gruber", "Olerud", "Borders", "Bell",
+                      "Felix", "Fernandez", "Lee", "Hill", "Wilson"]
+    for exp, plyr in zip(expected_order, fake_player_selector.select()):
+        print(plyr)
+        assert(plyr['name'] == exp)
+
+
+def test_selector_pitchers_iter(fake_player_selector):
+    fake_player_selector.rank(['ERA', 'W'])
+    expected_order = ["Steib", "Key", "Wells", "Stottlemyre", "Cerutti"]
+    for exp, plyr in zip(expected_order, fake_player_selector.select()):
+        print(plyr)
+        assert(plyr['name'] == exp)
