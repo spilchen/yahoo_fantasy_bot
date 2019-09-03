@@ -1,9 +1,9 @@
 #!/bin/python
 
-"""Command line interface to get predictions on a roster
+"""Command line interface to get predictions on a roster against an opponent(s)
 
 Usage:
-  predict.py [-o <team> | -a] [-cs] <json>
+  opponent_match.py [-o <team> | -a] [-cs] <json>
 
   <json>     The name of the JSON that has bearer token.  This can be generated
              from init_oauth_env.py.
