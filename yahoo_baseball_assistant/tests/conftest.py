@@ -11,13 +11,13 @@ RSEL_COLS = ["name", "HR", "OBP", "W", "ERA"]
 
 @pytest.fixture
 def empty_roster():
-    df = pd.DataFrame([], columns=RBLDR_COLS)
+    df = []
     yield df
 
 
 @pytest.fixture
 def bldr():
-    b = roster.Builder(["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF", "U",
+    b = roster.Builder(["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF", "Util",
                         "SP", "SP", "SP", "SP", "SP",
                         "RP", "RP", "RP", "RP", "RP"])
     yield b

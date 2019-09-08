@@ -14,10 +14,13 @@ class Container:
     :type team: yahoo_fantasy_api.team.Team
     """
     def __init__(self, lg, team):
-        self.week = lg.current_week() + 1
-        if self.week >= lg.end_week():
-            raise RuntimeError("Season over no more weeks to predict")
-        self.roster = team.roster(self.week)
+        if lg is not None:
+            self.week = lg.current_week() + 1
+            if self.week >= lg.end_week():
+                raise RuntimeError("Season over no more weeks to predict")
+            self.roster = team.roster(self.week)
+        else:
+            self.roster = []
 
     def get_roster(self):
         return self.roster
@@ -73,6 +76,14 @@ class Container:
                             'name': player_name,
                             'player_id': -1})
 
+    def add_players(self, players):
+        """Adds multiple players in bulk.
+
+        :param players: List of players to add to the container
+        :type players: List(dict)
+        """
+        self.roster = self.roster + players
+
     def change_position(self, player_name, pos):
         """Change the position of a player
 
@@ -125,10 +136,17 @@ class Scorer:
             else:
                 conv_l = round(l, 3)
                 conv_r = round(r, 3)
-            if conv_l > conv_r:
-                win += 1
-            elif conv_r > conv_l:
-                loss += 1
+            if self._is_highest_better(name):
+                if conv_l > conv_r:
+                    win += 1
+                elif conv_r > conv_l:
+                    loss += 1
+            else:
+                if conv_l < conv_r:
+                    win += 1
+                elif conv_r < conv_l:
+                    loss += 1
+
         return (win, loss)
 
     def _sum_hit_prediction(self, df):
@@ -199,6 +217,9 @@ class Scorer:
     def _is_counting_stat(self, stat):
         return stat in ['R', 'HR', 'RBI', 'SB', 'W', 'SO', 'SV', 'HLD']
 
+    def _is_highest_better(self, stat):
+        return stat not in ['ERA', 'WHIP']
+
 
 class Builder:
     """Class that generates roster permuations suitable for evaluation"""
@@ -222,19 +243,20 @@ class Builder:
         it with a selected_position set to something non-NaN.
 
         :param roster: Roster to fit the player on.
-        :type roster: pandas.DataFrame
+        :type roster: list
         :param player: Player to try and find a roster spot for.
         :type player: pandas.Series
         :return: The new roster with the player in it.  If an open spot is not
         available for the player then an LookupError assertion is returned.
-        :rtype: pandas.DataFrame
+        :rtype: list
         """
         # Search if any of the players eligible_positions are open.  Then it is
         # an easy fit.
         for pos in player.eligible_positions:
             if self._has_empty_position_slot(roster, pos):
                 player.selected_position = pos
-                return roster.append(player, ignore_index=True)
+                roster.append(player)
+                return roster
 
         checked_pos = {}
         for p in self.positions:
@@ -249,7 +271,8 @@ class Builder:
                                                    checked_pos):
                     assert(self._has_empty_position_slot(roster, pos))
                     player.selected_position = pos
-                    return roster.append(player, ignore_index=True)
+                    roster.append(player)
+                    return roster
 
         raise LookupError("No space for player on roster")
 
@@ -260,7 +283,7 @@ class Builder:
         to fit.
 
         :param roster: Base roster to try and add the player too
-        :type roster: pandas.DataFrame
+        :type roster: list
         :param player: Player to try and fit into the roster
         :type player: pandas.Series
         :return: An iterable that will enumerate all possible roster
@@ -271,7 +294,9 @@ class Builder:
         checked_pos = {}
 
         for pos in self.positions:
-            orig_roster = roster.copy(deep=True)
+            orig_roster = []
+            for plyr in roster:
+                orig_roster.append(plyr.copy())
             if pos not in checked_pos:
                 checked_pos[pos] = 0
             else:
@@ -282,7 +307,15 @@ class Builder:
             pos_player.selected_position = np.nan
             try:
                 new_roster = self.fit_if_space(roster, player)
-                yield new_roster
+
+                # Remove anyone from the roster that doesn't have a selected
+                # position
+                pruned_roster = []
+                for plyr in new_roster:
+                    if type(plyr['selected_position']) == str:
+                        pruned_roster.append(plyr)
+
+                yield pruned_roster
             except LookupError:
                 pass
             finally:
@@ -291,8 +324,7 @@ class Builder:
 
     def _get_player_by_pos(self, roster, pos, occurance):
         cum_occurance = 0
-        for i in range(len(roster.index)):
-            plyr = roster.loc[i]
+        for plyr in roster:
             if plyr.selected_position == pos:
                 if cum_occurance == occurance:
                     return plyr
@@ -301,7 +333,11 @@ class Builder:
 
     def _get_num_players_at_pos(self, roster, pos):
         """Return the number of players the roster has at the given position"""
-        return len(roster[roster.selected_position == pos].index)
+        cum_occurance = 0
+        for plyr in roster:
+            if plyr.selected_position == pos:
+                cum_occurance += 1
+        return cum_occurance
 
     def _has_empty_position_slot(self, roster, pos):
         assert(pos in self.pos_count)
@@ -383,7 +419,6 @@ class PlayerSelector:
         with the top ranked player.
         """
         df = self.ppool.sort_values(by=['rank'], ascending=False)
-        print(df)
         for plyr_tuple in df.iterrows():
             yield plyr_tuple[1]
 

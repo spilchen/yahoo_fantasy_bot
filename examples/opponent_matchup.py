@@ -20,7 +20,7 @@ Other options:
 from docopt import docopt
 from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
-from yahoo_baseball_assistant import prediction, roster
+from yahoo_baseball_assistant import prediction, roster, scraper
 from baseball_scraper import fangraphs, baseball_reference, espn
 import logging
 import pickle
@@ -96,46 +96,6 @@ def save_teams(pred_bldr, team_containers):
             pickle.dump(cont, f)
 
 
-def save_scrapers(fg, ts, tss):
-    fn = "fangraphs.predictions.pkl"
-    with open(fn, "wb") as f:
-        pickle.dump(fg, f)
-    fn = "bref.teams.pkl"
-    with open(fn, "wb") as f:
-        pickle.dump(ts, f)
-    fn = "bref.teamsummary.pkl"
-    with open(fn, "wb") as f:
-        pickle.dump(tss, f)
-
-
-def init_scrapers():
-    fg = None
-    ts = None
-    tss = None
-    if args['-c']:
-        fn = "fangraphs.predictions.pkl"
-        if os.path.exists(fn):
-            with open(fn, 'rb') as f:
-                fg = pickle.load(f)
-        fn = "bref.teams.pkl"
-        if os.path.exists(fn):
-            with open(fn, 'rb') as f:
-                ts = pickle.load(f)
-        fn = "bref.teamsummary.pkl"
-        if os.path.exists(fn):
-            with open(fn, 'rb') as f:
-                tss = pickle.load(f)
-
-    if fg is None:
-        fg = fangraphs.Scraper("Depth Charts (RoS)")
-    if ts is None:
-        ts = baseball_reference.TeamScraper()
-    if tss is None:
-        tss = baseball_reference.TeamSummaryScraper()
-
-    return (fg, ts, tss)
-
-
 if __name__ == '__main__':
     args = docopt(__doc__, version='1.0')
     logging.basicConfig(
@@ -152,7 +112,7 @@ if __name__ == '__main__':
     lg = yfa.League(sc, league_id[0])
     team_key = lg.team_key()
     my_tm = yfa.Team(sc, team_key)
-    (fg, ts, tss) = init_scrapers()
+    (fg, ts, tss) = scraper.init_scrapers()
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     es = espn.ProbableStartersScraper(start_date, end_date)
 
@@ -173,5 +133,5 @@ if __name__ == '__main__':
         print("Prediction result: {} - {}".format(w, l))
 
     if args['-s']:
-        save_scrapers(fg, ts, tss)
+        scraper.save(fg, ts, tss)
         save_teams(pred_bldr, team_containers)

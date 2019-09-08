@@ -400,7 +400,10 @@ class YahooAssistant(npyscreen.NPSAppManaged):
         self.team_key = self.lg.team_key()
         self.predict_team = None
         self.my_tm = yfa.Team(self.sc, self.team_key)
-        self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
+        try:
+            self.matchup = self.my_tm.matchup(self.lg.current_week() + 1)
+        except RuntimeError:
+            self.matchup = None
         self.init_teams()
         self.scorer = roster.Scorer()
         self.teams = None

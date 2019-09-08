@@ -51,7 +51,7 @@ class Builder:
     def set_id_lookup(self, lk):
         self.id_lookup = lk
 
-    def predict(self, roster_cont):
+    def predict(self, roster_cont, fail_on_missing=True, id_system='fg_id'):
         """Build a dataset of hitting and pitching predictions for the week
 
         The roster is inputed into this function.  It will scrape the
@@ -61,6 +61,10 @@ class Builder:
 
         :param roster_cont: Roster of players to generate predictions for
         :type roster_cont: roster.Container object
+        :param fail_on_missing: True we are to fail if any player in
+        roster_cont can't be found in the prediction data set.  Set this to
+        false to simply filter those out.
+        :type fail_on_missing: bool
         :return: Dataset of predictions
         :rtype: DataFrame
         """
@@ -68,29 +72,30 @@ class Builder:
         for roster_type, scrape_type in zip(['B', 'P'],
                                             [fangraphs.ScrapeType.HITTER,
                                              fangraphs.ScrapeType.PITCHER]):
-            lk = self._find_roster(roster_type, roster_cont.get_roster())
-            # Need to separate the list since we two kinds of scraping.  One by
-            # fangraph IDs (common) and one by names.  The later is only used
-            # if the fangraphs ID is missing.
-            names = lk[lk.fg_id.isna()].mlb_name.to_list()
-            ids = lk.fg_id.dropna().to_list()
-            if len(names) > 0:
-                names_df = self.fg.scrape(names, id_name='Name',
-                                          scrape_as=scrape_type)
-                assert(False), "Need to sub in the player ID into lk"
-            else:
-                names_df = pd.DataFrame()
-            if len(ids) > 0:
-                ids_df = self.fg.scrape(ids, scrape_as=scrape_type)
-            else:
-                ids_df = pd.DataFrame()
-            df = ids_df.append(names_df, sort=False)
+            lk = self._find_roster(roster_type, roster_cont.get_roster(),
+                                   fail_on_missing)
+            if lk is None:
+                continue
+            # Filter out any players who don't have a fangraph ID.  We can't do
+            # a lookup otherwise.
+            lk = lk[lk[id_system].notnull()]
+            df = self.fg.scrape(lk[id_system].to_list(), scrape_as=scrape_type)
+
+            # Remove any duplicates in the player list we scrape.
+            df = df.drop_duplicates('playerid')
+
+            # In case we weren't able to look up everyone, trim off the players
+            # in lk who we could not find.  Both df and lk must end up matching
+            # when we construct the DataFrame.
+            if len(lk.index) > len(df.index):
+                lk = lk[lk[id_system].isin(df.playerid)]
+                assert(len(lk.index) == len(df.index))
 
             # Need to sort both the roster lookup and the scrape data by
             # fangraph ID.  They both need to be in the same sorted order
             # because we are extracting out the espn_ID from lk and adding it
             # to the scrape data data frame.
-            lk = lk.sort_values(by='fg_id', axis=0)
+            lk = lk.sort_values(by=id_system, axis=0)
             df = df.sort_values(by='playerid', axis=0)
             logger.info(lk)
             logger.info(df)
@@ -130,11 +135,12 @@ class Builder:
                 a.append(None)
         return a
 
-    def _find_roster(self, position_type, roster):
+    def _find_roster(self, position_type, roster, fail_on_missing=True):
         lk = None
         for plyr in roster:
             if plyr['position_type'] != position_type or \
-                    plyr['selected_position'] in ['BN', 'DL']:
+                    ('selected_position' in plyr and
+                     plyr['selected_position'] in ['BN', 'DL']):
                 continue
 
             one_lk = self.id_lookup.from_yahoo_ids([plyr['player_id']])
@@ -162,8 +168,11 @@ class Builder:
                     one_lk = self.id_lookup.from_names([name])
 
             if len(one_lk.index) == 0:
-                raise ValueError("Was not able to lookup player: {}".format(
-                    plyr))
+                if fail_on_missing:
+                    raise ValueError("Was not able to lookup player: {}".
+                                     format(plyr))
+                else:
+                    continue
 
             ep_series = pd.Series([plyr["eligible_positions"]], dtype="object",
                                   index=one_lk.index)
