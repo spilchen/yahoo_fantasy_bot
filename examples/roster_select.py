@@ -161,7 +161,8 @@ def show_two_start_pitchers(my_df):
         print(plyr[1]['Name'])
 
 
-def auto_select_players(ppool, my_team_bldr, lineup, opp_sum, blacklist):
+def auto_select_players(ppool, my_team_bldr, lineup, opp_sum, blacklist,
+                        id_system='playerid'):
     print("")
     print("Number of iterations: ")
     try:
@@ -176,8 +177,8 @@ def auto_select_players(ppool, my_team_bldr, lineup, opp_sum, blacklist):
 
     # Filter out any players from the lineup as we don't want to consider them
     # again.
-    lineup_ids = [e['playerid'] for e in lineup]
-    avail_plyrs = ppool[~ppool.playerid.isin(lineup_ids)]
+    lineup_ids = [e[id_system] for e in lineup]
+    avail_plyrs = ppool[~ppool[id_system].isin(lineup_ids)]
     selector = roster.PlayerSelector(avail_plyrs)
     try:
         selector.rank(categories)
@@ -275,10 +276,16 @@ def fetch_player_pool(lg, pred_bldr):
                     .format(len(batter_pool), len(pitcher_pool)))
         rcont = roster.Container(None, None)
         rcont.add_players(batter_pool)
-        batter_preds = pred_bldr.predict(rcont, fail_on_missing=False)
+        batter_preds = pred_bldr.predict(rcont, fail_on_missing=False,
+                                         lk_id_system='mlb_id',
+                                         scrape_id_system='MLBAM ID',
+                                         team_has='abbrev')
         rcont = roster.Container(None, None)
         rcont.add_players(pitcher_pool)
-        pitcher_preds = pred_bldr.predict(rcont, fail_on_missing=False)
+        pitcher_preds = pred_bldr.predict(rcont, fail_on_missing=False,
+                                          lk_id_system='mlb_id',
+                                          scrape_id_system='MLBAM ID',
+                                          team_has='abbrev')
 
         # Filter out some of the batting categories from pitchers
         for hit_stat in ['HR', 'RBI', 'AVG', 'OBP', 'R', 'SB']:
@@ -395,7 +402,10 @@ if __name__ == '__main__':
     my_df = fetch_player_pool(lg, pred_bldr)
 
     # Build up the predicted score of the opponent
-    opp_df = pred_bldr.predict(opp_team)
+    opp_df = pred_bldr.predict(opp_team,
+                               lk_id_system='mlb_id',
+                               scrape_id_system='MLBAM ID',
+                               team_has='abbrev')
     scorer = roster.Scorer()
     opp_sum = scorer.summarize(opp_df)
 
@@ -422,7 +432,8 @@ if __name__ == '__main__':
             show_score(my_roster, opp_sum)
         elif opt == "A":
             my_roster = auto_select_players(my_df, my_team_bldr, my_roster,
-                                            opp_sum, blacklist)
+                                            opp_sum, blacklist,
+                                            id_system='MLBAM ID')
         elif opt == "M":
             manual_select_players(my_df, my_roster, opp_sum)
         elif opt == "T":

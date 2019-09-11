@@ -16,7 +16,7 @@ class Container:
     def __init__(self, lg, team):
         if lg is not None:
             self.week = lg.current_week() + 1
-            if self.week >= lg.end_week():
+            if self.week > lg.end_week():
                 raise RuntimeError("Season over no more weeks to predict")
             self.roster = team.roster(self.week)
         else:
@@ -159,7 +159,7 @@ class Scorer:
             for plyr in df.iterrows():
                 if plyr[1]['roster_type'] != 'B':
                     continue
-                if plyr[1]['G'] > 0:
+                if plyr[1]['SEASON_G'] > 0:
                     val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
                         plyr[1]['WK_G']
             res[stat] = val

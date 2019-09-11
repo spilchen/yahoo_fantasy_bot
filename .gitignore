@@ -10,3 +10,4 @@ anaconda-project-local.yml
 *.pkl
 *.log
 .ropeproject
+*.csv

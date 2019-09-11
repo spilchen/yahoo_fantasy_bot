@@ -51,7 +51,8 @@ class Builder:
     def set_id_lookup(self, lk):
         self.id_lookup = lk
 
-    def predict(self, roster_cont, fail_on_missing=True, id_system='fg_id'):
+    def predict(self, roster_cont, fail_on_missing=True, lk_id_system='fg_id',
+                scrape_id_system='playerid', team_has='just_name'):
         """Build a dataset of hitting and pitching predictions for the week
 
         The roster is inputed into this function.  It will scrape the
@@ -64,6 +65,15 @@ class Builder:
         :param fail_on_missing: True we are to fail if any player in
         roster_cont can't be found in the prediction data set.  Set this to
         false to simply filter those out.
+        :param lk_id_system: Name of the ID column in the baseball_id Lookup
+        :type lk_id_system: str
+        :param scrape_id_system: Name of the ID column in the scraped data that
+        has the ID to match with Lookup
+        :type scrape_id_system: str
+        :param team_has: Indicate the Team field in the scraped data frame.
+        Does it have 'just_name' (e.g. Blue Jays, Reds, etc.) or 'abbrev' (e.g.
+        NYY, SEA, etc.)
+        :type team_has: str
         :type fail_on_missing: bool
         :return: Dataset of predictions
         :rtype: DataFrame
@@ -78,32 +88,33 @@ class Builder:
                 continue
             # Filter out any players who don't have a fangraph ID.  We can't do
             # a lookup otherwise.
-            lk = lk[lk[id_system].notnull()]
-            df = self.fg.scrape(lk[id_system].to_list(), scrape_as=scrape_type)
+            lk = lk[lk[lk_id_system].notnull()]
+            df = self.fg.scrape(lk[lk_id_system].to_list(),
+                                scrape_as=scrape_type)
 
             # Remove any duplicates in the player list we scrape.
-            df = df.drop_duplicates('playerid')
+            df = df.drop_duplicates(scrape_id_system)
 
             # In case we weren't able to look up everyone, trim off the players
             # in lk who we could not find.  Both df and lk must end up matching
             # when we construct the DataFrame.
             if len(lk.index) > len(df.index):
-                lk = lk[lk[id_system].isin(df.playerid)]
+                lk = lk[lk[lk_id_system].isin(df[scrape_id_system])]
                 assert(len(lk.index) == len(df.index))
 
             # Need to sort both the roster lookup and the scrape data by
             # fangraph ID.  They both need to be in the same sorted order
             # because we are extracting out the espn_ID from lk and adding it
             # to the scrape data data frame.
-            lk = lk.sort_values(by=id_system, axis=0)
-            df = df.sort_values(by='playerid', axis=0)
+            lk = lk.sort_values(by=lk_id_system, axis=0)
+            df = df.sort_values(by=scrape_id_system, axis=0)
             logger.info(lk)
             logger.info(df)
 
             espn_ids = lk.espn_id.to_list()
             num_GS = self._num_gs(espn_ids)
             df = df.assign(WK_GS=pd.Series(num_GS, index=df.index))
-            team_abbrevs = self._lookup_teams(df.Team.to_list())
+            team_abbrevs = self._lookup_teams(df.Team.to_list(), team_has)
             df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
             wk_g = self._num_games_for_teams(team_abbrevs, True)
             df = df.assign(WK_G=pd.Series(wk_g, index=df.index))
@@ -117,11 +128,17 @@ class Builder:
 
         # Add a column that will track the selected position of each player.
         # It is currently set to NaN since other modules fill that in.
-        df = df.assign(selected_position=np.nan)
+        res = res.assign(selected_position=np.nan)
 
         return res
 
-    def _lookup_teams(self, teams):
+    def _lookup_teams(self, teams, team_has):
+        if team_has == 'just_name':
+            return self._lookup_teams_by_name(teams)
+        else:
+            return self._lookup_teams_by_abbrev(teams)
+
+    def _lookup_teams_by_name(self, teams):
         a = []
         tl_df = self.tss.scrape(self.wk_start_date.year)
         for team in teams:
@@ -132,6 +149,18 @@ class Builder:
                          abbrev.iloc(0)[0])
             else:
                 assert(np.isnan(team))
+                a.append(None)
+        return a
+
+    def _lookup_teams_by_abbrev(self, teams):
+        a = []
+        abbrev_remap = {"WAS": "WSN"}
+        for team in teams:
+            if type(team) is str and team != 'FAA':
+                if team in abbrev_remap:
+                    team = abbrev_remap[team]
+                a.append(team)
+            else:
                 a.append(None)
         return a
 
