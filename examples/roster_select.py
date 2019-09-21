@@ -59,6 +59,7 @@ def print_main_menu():
     print("")
     print("Main Menu")
     print("=========")
+    print("P - Pick opponent")
     print("R - Show roster")
     print("S - Show sumarized scores")
     print("A - Auto select players")
@@ -108,30 +109,34 @@ def compute_score(lineup, opp_sum):
     return (w, l, my_sum)
 
 
-def show_score(lineup, opp_sum):
-    (w, l, my_sum) = compute_score(lineup, opp_sum)
-    print("Estimate roster will score: {} - {}".format(w, l))
-    print("")
-    for stat in my_sum.index:
-        if stat in ["ERA", "WHIP"]:
-            if my_sum[stat] < opp_sum[stat]:
-                my_win = "*"
-                opp_win = ""
+def show_score(lineup, opp_team_name, opp_sum):
+    if opp_sum is None:
+        print("No opponent selected")
+    else:
+        (w, l, my_sum) = compute_score(lineup, opp_sum)
+        print("Against '{}' your roster will score: {} - {}".
+              format(opp_team_name, w, l))
+        print("")
+        for stat in my_sum.index:
+            if stat in ["ERA", "WHIP"]:
+                if my_sum[stat] < opp_sum[stat]:
+                    my_win = "*"
+                    opp_win = ""
+                else:
+                    my_win = ""
+                    opp_win = "*"
             else:
-                my_win = ""
-                opp_win = "*"
-        else:
-            if my_sum[stat] > opp_sum[stat]:
-                my_win = "*"
-                opp_win = ""
-            else:
-                my_win = ""
-                opp_win = "*"
-        print("{:5} {:2.3f} {:1} v.s. {:2.3f} {:2}".format(stat,
-                                                           my_sum[stat],
-                                                           my_win,
-                                                           opp_sum[stat],
-                                                           opp_win))
+                if my_sum[stat] > opp_sum[stat]:
+                    my_win = "*"
+                    opp_win = ""
+                else:
+                    my_win = ""
+                    opp_win = "*"
+            print("{:5} {:2.3f} {:1} v.s. {:2.3f} {:2}".format(stat,
+                                                               my_sum[stat],
+                                                               my_win,
+                                                               opp_sum[stat],
+                                                               opp_win))
 
 
 def is_new_score_better(orig_w, orig_l, new_w, new_l):
@@ -163,6 +168,10 @@ def show_two_start_pitchers(my_df):
 
 def auto_select_players(ppool, my_team_bldr, lineup, opp_sum, blacklist,
                         id_system='playerid'):
+    if opp_sum is None:
+        print("Must pick an opponent")
+        return lineup
+
     print("")
     print("Number of iterations: ")
     try:
@@ -209,9 +218,13 @@ def auto_select_players(ppool, my_team_bldr, lineup, opp_sum, blacklist,
     return lineup
 
 
-def manual_select_players(ppool, lineup, opp_sum):
+def manual_select_players(ppool, lineup, opp_team_name, opp_sum):
+    if opp_sum is None:
+        print("Must pick an opponent")
+        return
+
     print_roster(lineup)
-    show_score(lineup, opp_sum)
+    show_score(lineup, opp_team_name, opp_sum)
     print("Enter the name of the player to remove: ")
     pname_rem = input().rstrip()
     print("Enter the name of the player to add: ")
@@ -250,7 +263,7 @@ def manual_select_players(ppool, lineup, opp_sum):
     del lineup[del_idx]
 
     print_roster(lineup)
-    show_score(lineup, opp_sum)
+    show_score(lineup, opp_team_name, opp_sum)
 
 
 def fetch_player_pool(lg, pred_bldr):
@@ -379,6 +392,50 @@ def load_roster(ppool, blacklist, my_team_bldr):
     return my_roster
 
 
+def list_teams(lg):
+    for team in lg.teams():
+        print("{:30} {:15}".format(team['name'], team['team_key']))
+
+
+def get_team_name(lg, team_key):
+    for team in lg.teams():
+        if team['team_key'] == team_key:
+            return team['name']
+    raise LookupError("Could not find team for team key: {}".format(team_key))
+
+
+def sum_opponent(pred_bldr, lg, opp_team_key):
+    # Build up the predicted score of the opponent
+    try:
+        team_name = get_team_name(lg, opp_team_key)
+    except LookupError:
+        print("Not a valid team: {}:".format(opp_team_key))
+        return(None, None)
+
+    opp_team = roster.Container(lg, lg.to_team(opp_team_key))
+    opp_df = pred_bldr.predict(opp_team,
+                               lk_id_system='mlb_id',
+                               scrape_id_system='MLBAM ID',
+                               team_has='abbrev')
+    scorer = roster.Scorer()
+    opp_sum = scorer.summarize(opp_df)
+    return (team_name, opp_sum)
+
+
+def pick_opponent(pred_bldr, lg):
+    print("")
+    print("Available teams")
+    list_teams(lg)
+    print("")
+    print("Enter team key of new opponent (or X to quit): ")
+    opp_team_key = input()
+
+    if opp_team_key == 'X':
+        return (None, None)
+    else:
+        return sum_opponent(pred_bldr, lg, opp_team_key)
+
+
 if __name__ == '__main__':
     args = docopt(__doc__, version='1.0')
     logging.basicConfig(
@@ -394,20 +451,13 @@ if __name__ == '__main__':
     league_id = gm.league_ids(year=2019)
     lg = yfa.League(sc, league_id[0])
 
-    opp_team = roster.Container(lg, lg.to_team(args['<team_key>']))
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     pred_bldr = scraper.init_prediction_builder(lg, start_date, end_date)
 
+    (opp_team_name, opp_sum) = sum_opponent(pred_bldr, lg, args['<team_key>'])
+
     # Build the roster pool of players
     my_df = fetch_player_pool(lg, pred_bldr)
-
-    # Build up the predicted score of the opponent
-    opp_df = pred_bldr.predict(opp_team,
-                               lk_id_system='mlb_id',
-                               scrape_id_system='MLBAM ID',
-                               team_has='abbrev')
-    scorer = roster.Scorer()
-    opp_sum = scorer.summarize(opp_df)
 
     # Load the black list
     if os.path.exists(BLACKLIST_PKL):
@@ -426,16 +476,18 @@ if __name__ == '__main__':
         print_main_menu()
         opt = input()
 
-        if opt == "R":
+        if opt == "P":
+            (opp_team_name, opp_sum) = pick_opponent(pred_bldr, lg)
+        elif opt == "R":
             print_roster(my_roster)
         elif opt == "S":
-            show_score(my_roster, opp_sum)
+            show_score(my_roster, opp_team_name, opp_sum)
         elif opt == "A":
             my_roster = auto_select_players(my_df, my_team_bldr, my_roster,
                                             opp_sum, blacklist,
                                             id_system='MLBAM ID')
         elif opt == "M":
-            manual_select_players(my_df, my_roster, opp_sum)
+            manual_select_players(my_df, my_roster, opp_team_name, opp_sum)
         elif opt == "T":
             show_two_start_pitchers(my_df)
         elif opt == "L":
