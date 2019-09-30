@@ -2,7 +2,7 @@
 *.model
 .ipynb_checkpoints
 __pycache__/
-oauth2.json
+oauth2.*.json
 anaconda-project-local.yml
 .cache/
 .eggs/
@@ -11,3 +11,4 @@ anaconda-project-local.yml
 *.log
 .ropeproject
 *.csv
+*.cfg

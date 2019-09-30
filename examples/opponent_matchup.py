@@ -20,8 +20,8 @@ Other options:
 from docopt import docopt
 from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
-from yahoo_baseball_assistant import prediction, roster, scraper
-from baseball_scraper import fangraphs, baseball_reference, espn
+from yahoo_baseball_assistant import baseball_prediction, roster
+from baseball_scraper import espn
 import logging
 import pickle
 import os
@@ -72,7 +72,7 @@ def init_teams(args, lg, fg, ts, es, tss):
             with open(fn, 'rb') as f:
                 pred_bldr = pickle.load(f)
     if pred_bldr is None:
-        pred_bldr = prediction.Builder(lg, fg, ts, es, tss)
+        pred_bldr = baseball_prediction.Builder(lg, fg, ts, es, tss)
     team_containers = {}
     for tm in lg.teams():
         if args['-c']:
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     lg = yfa.League(sc, league_id[0])
     team_key = lg.team_key()
     my_tm = yfa.Team(sc, team_key)
-    (fg, ts, tss) = scraper.init_scrapers()
+    (fg, ts, tss) = baseball_prediction.init_scrapers()
     (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
     es = espn.ProbableStartersScraper(start_date, end_date)
 
@@ -133,5 +133,4 @@ if __name__ == '__main__':
         print("Prediction result: {} - {}".format(w, l))
 
     if args['-s']:
-        scraper.save(fg, ts, tss)
         save_teams(pred_bldr, team_containers)

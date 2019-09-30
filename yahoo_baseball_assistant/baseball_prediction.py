@@ -1,16 +1,19 @@
 #!/bin/python
 
-from baseball_scraper import fangraphs
+from baseball_scraper import baseball_reference, espn, fangraphs
 from baseball_id import Lookup
 from yahoo_baseball_assistant import utils
 import pandas as pd
 import numpy as np
 import datetime
 import logging
+import pickle
 
 
 logger = logging.getLogger()
 
+
+# SPILLY - rename this module to be baseball.py
 
 class Builder:
     """Class that constructs prediction datasets for hitters and pitchers.
@@ -124,6 +127,12 @@ class Builder:
             df = df.assign(roster_type=pd.Series(roster_type, index=df.index))
             e_pos = [e[1]["eligible_positions"] for e in lk.iterrows()]
             df = df.assign(eligible_positions=pd.Series(e_pos, index=df.index))
+
+            # Filter out some of the batting categories from pitchers
+            if roster_type == 'P':
+                for hit_stat in ['HR', 'RBI', 'AVG', 'OBP', 'R', 'SB']:
+                    df[hit_stat] = np.nan
+
             res = res.append(df, sort=False)
 
         # Add a column that will track the selected position of each player.
@@ -236,3 +245,210 @@ class Builder:
             gs = len(df[df.espn_id == espn_id].index)
             num_GS.append(gs)
         return num_GS
+
+
+def init_scrapers():
+    fg = GenericCsvScraper('BaseballHQ_M_B_P.csv', 'BaseballHQ_M_P_P.csv')
+    ts = baseball_reference.TeamScraper()
+    tss = baseball_reference.TeamSummaryScraper()
+    return (fg, ts, tss)
+
+
+def init_prediction_builder(lg, cfg):
+    (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
+    pred_bldr = utils.pickle_if_recent("Builder.pkl")
+    if pred_bldr is not None:
+        pred_bldr.save_on_exit = False
+        return pred_bldr
+    (fg, ts, tss) = init_scrapers()
+    es = espn.ProbableStartersScraper(start_date, end_date)
+    pred_bldr = Builder(lg, fg, ts, es, tss)
+    pred_bldr.save_on_exit = True
+    return pred_bldr
+
+
+def save_prediction_builder(pred_bldr, cfg):
+    if pred_bldr.save_on_exit:
+        fn = "Builder.pkl"
+        with open(fn, "wb") as f:
+            pickle.dump(pred_bldr, f)
+
+
+class GenericCsvScraper:
+    def __init__(self, batter_proj_file, pitcher_proj_file):
+        self.batter_cache = pd.read_csv(batter_proj_file,
+                                        encoding='iso-8859-1',
+                                        header=1,
+                                        skipfooter=1,
+                                        engine='python')
+        self.pitcher_cache = pd.read_csv(pitcher_proj_file,
+                                         encoding='iso-8859-1',
+                                         header=1,
+                                         skipfooter=1,
+                                         engine='python')
+
+    def scrape(self, mlb_ids, scrape_as):
+        """Scrape the csv file and return those match mlb_ids"""
+        cache = self._get_cache(scrape_as)
+        df = cache[cache['MLBAM ID'].isin(mlb_ids)]
+        df['Name'] = df['Firstname'] + " " + df['Lastname']
+        df = df.rename(columns={"Tm": "Team"})
+        if scrape_as == fangraphs.ScrapeType.PITCHER:
+            df = df.rename(columns={"Sv": "SV", "Hld": "HLD", "K": "SO"})
+        return df
+
+    def _get_cache(self, scrape_as):
+        if scrape_as == fangraphs.ScrapeType.HITTER:
+            return self.batter_cache
+        else:
+            return self.pitcher_cache
+
+
+class PlayerPrinter:
+    def __init__(self, cfg):
+        pass
+
+    def printRoster(self, roster):
+        """Print out the roster to standard out
+
+        :param cfg: Instance of the config
+        :type cfg: configparser
+        :param lineup: Roster to print out
+        :type lineup: List
+        """
+        print("{:4}: {:20}   "
+              "{}/{}/{}/{}/{}/{}".
+              format('B', '', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP'))
+        for pos in ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'Util',
+                    'SP', 'SP', 'SP', 'SP', 'SP', 'RP', 'RP', 'RP', 'RP',
+                    'RP']:
+            for plyr in roster:
+                if plyr['selected_position'] == pos:
+                    if pos in ["SP", "RP"]:
+                        print("{:4}: {:20}   "
+                              "{:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.3f}/{:.3f}".
+                              format(plyr['selected_position'],
+                                     plyr['name'], plyr['W'], plyr['HLD'],
+                                     plyr['SV'], plyr['SO'], plyr['ERA'],
+                                     plyr['WHIP']))
+                    else:
+                        print("{:4}: {:20}   "
+                              "{:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.3f}/{:.3f}".
+                              format(plyr['selected_position'], plyr['name'],
+                                     plyr['R'], plyr['HR'], plyr['RBI'],
+                                     plyr['SB'], plyr['AVG'], plyr['OBP']))
+                    if pos == 'Util':
+                        print("")
+                        print("{:4}: {:20}   "
+                              "{}/{}/{}/{}/{}/{}".
+                              format('P', '', 'W', 'HLD', 'SV', 'SO', 'ERA',
+                                     'WHIP'))
+
+    def printListPlayerHeading(self, pos):
+        if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:
+            print("{:20}   {}/{}/{}/{}/{}/{}".format('name', 'R', 'HR', 'RBI',
+                                                     'SB', 'AVG', 'OBP'))
+        else:
+            print("{:20}   {}/{}/{}/{}/{}/{}".format('name', 'W', 'HLD', 'SV',
+                                                     'SO', 'ERA', 'WHIP'))
+
+    def printPlayer(self, pos, plyr):
+        if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:
+            print("{:20}   {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.3f}/{:.3f}".
+                  format(plyr[1]['name'], plyr[1]['R'], plyr[1]['HR'],
+                         plyr[1]['RBI'], plyr[1]['SB'], plyr[1]['AVG'],
+                         plyr[1]['OBP']))
+        else:
+            print("{:20}   {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.3f}/{:.3f}".
+                  format(plyr[1]['name'], plyr[1]['W'], plyr[1]['HLD'],
+                         plyr[1]['SV'], plyr[1]['SO'], plyr[1]['ERA'],
+                         plyr[1]['WHIP']))
+
+
+class Scorer:
+    """Class that scores rosters that it is given"""
+    def __init__(self, cfg):
+        pass
+
+    def summarize(self, df):
+        """Summarize the dataframe into individual stat categories
+
+        :param df: Roster predictions to summarize
+        :type df: DataFrame
+        :return: Summarized predictions
+        :rtype: Series
+        """
+        res = self._sum_hit_prediction(df)
+        res = res.append(self._sum_pit_prediction(df))
+        return res
+
+    def _sum_hit_prediction(self, df):
+        temp_stat_cols = ['AB', 'H', 'BB']
+        hit_stat_cols = ['R', 'HR', 'RBI', 'SB'] + temp_stat_cols
+
+        res = pd.Series()
+        for stat in hit_stat_cols:
+            val = 0
+            for plyr in df.iterrows():
+                if plyr[1]['roster_type'] != 'B':
+                    continue
+                if plyr[1]['SEASON_G'] > 0:
+                    val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
+                        plyr[1]['WK_G']
+            res[stat] = val
+
+        # Handle ratio stats
+        if res['AB'] > 0:
+            res['AVG'] = res['H'] / res['AB']
+        else:
+            res['AVG'] = None
+        if res['AB'] + res['BB'] > 0:
+            res['OBP'] = (res['H'] + res['BB']) / \
+                (res['AB'] + res['BB'])
+        else:
+            res['OBP'] = None
+
+        # Drop the temporary values used to calculate the ratio stats
+        res = res.drop(index=temp_stat_cols)
+
+        return res
+
+    def _sum_pit_prediction(self, df):
+        temp_stat_cols = ['G', 'ER', 'IP', 'BB', 'H']
+        pit_stat_cols = ['SO', 'SV', 'HLD', 'W'] + temp_stat_cols
+
+        res = pd.Series()
+        for stat in pit_stat_cols:
+            val = 0
+            for plyr in df.iterrows():
+                if plyr[1]['roster_type'] != 'P':
+                    continue
+                # Account for number of known starts (if applicable).
+                # Otherwise, just revert to an average over the remaining games
+                # on the team's schedule.
+                if plyr[1]['WK_GS'] > 0:
+                    val += plyr[1][stat] / plyr[1]['G'] \
+                        * plyr[1]['WK_GS']
+                elif plyr[1]['WK_G'] > 0:
+                    val += plyr[1][stat] / plyr[1]['SEASON_G'] \
+                        * plyr[1]['WK_G']
+            res[stat] = val
+
+        # Handle ratio stats
+        if res['IP'] > 0:
+            res['WHIP'] = (res['BB'] + res['H']) / res['IP']
+            res['ERA'] = res['ER'] * 9 / res['IP']
+        else:
+            res['WHIP'] = None
+            res['ERA'] = None
+
+        # Delete the temporary values used to calculate the ratio stats
+        res = res.drop(index=temp_stat_cols)
+
+        return res
+
+    def is_counting_stat(self, stat):
+        return stat in ['R', 'HR', 'RBI', 'SB', 'W', 'SO', 'SV', 'HLD']
+
+    def is_highest_better(self, stat):
+        return stat not in ['ERA', 'WHIP']

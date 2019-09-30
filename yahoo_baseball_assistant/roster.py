@@ -101,126 +101,6 @@ class Container:
         raise ValueError("Player not found on roster")
 
 
-class Scorer:
-    """Class that scores rosters that it is given"""
-    def __init__(self):
-        pass
-
-    def summarize(self, df):
-        """Summarize the dataframe into individual stat categories
-
-        :param df: Roster predictions to summarize
-        :type df: DataFrame
-        :return: Summarized predictions
-        :rtype: Series
-        """
-        res = self._sum_hit_prediction(df)
-        res = res.append(self._sum_pit_prediction(df))
-        return res
-
-    def compare(self, left, right):
-        """Determine how many points comparing two summarized stats together
-
-        :param left: Summarized stats to compare
-        :type left: Series
-        :param right: Summarized stats to compare
-        :type right: Series
-        :return: Number of wins and number of losses.
-        :rtype: Tuple of two ints
-        """
-        (win, loss) = (0, 0)
-        for l, r, name in zip(left, right, left.index):
-            if self._is_counting_stat(name):
-                conv_l = int(l)
-                conv_r = int(r)
-            else:
-                conv_l = round(l, 3)
-                conv_r = round(r, 3)
-            if self._is_highest_better(name):
-                if conv_l > conv_r:
-                    win += 1
-                elif conv_r > conv_l:
-                    loss += 1
-            else:
-                if conv_l < conv_r:
-                    win += 1
-                elif conv_r < conv_l:
-                    loss += 1
-
-        return (win, loss)
-
-    def _sum_hit_prediction(self, df):
-        temp_stat_cols = ['AB', 'H', 'BB']
-        hit_stat_cols = ['R', 'HR', 'RBI', 'SB'] + temp_stat_cols
-
-        res = pd.Series()
-        for stat in hit_stat_cols:
-            val = 0
-            for plyr in df.iterrows():
-                if plyr[1]['roster_type'] != 'B':
-                    continue
-                if plyr[1]['SEASON_G'] > 0:
-                    val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
-                        plyr[1]['WK_G']
-            res[stat] = val
-
-        # Handle ratio stats
-        if res['AB'] > 0:
-            res['AVG'] = res['H'] / res['AB']
-        else:
-            res['AVG'] = None
-        if res['AB'] + res['BB'] > 0:
-            res['OBP'] = (res['H'] + res['BB']) / \
-                (res['AB'] + res['BB'])
-        else:
-            res['OBP'] = None
-
-        # Drop the temporary values used to calculate the ratio stats
-        res = res.drop(index=temp_stat_cols)
-
-        return res
-
-    def _sum_pit_prediction(self, df):
-        temp_stat_cols = ['G', 'ER', 'IP', 'BB', 'H']
-        pit_stat_cols = ['SO', 'SV', 'HLD', 'W'] + temp_stat_cols
-
-        res = pd.Series()
-        for stat in pit_stat_cols:
-            val = 0
-            for plyr in df.iterrows():
-                if plyr[1]['roster_type'] != 'P':
-                    continue
-                # Account for number of known starts (if applicable).
-                # Otherwise, just revert to an average over the remaining games
-                # on the team's schedule.
-                if plyr[1]['WK_GS'] > 0:
-                    val += plyr[1][stat] / plyr[1]['G'] \
-                        * plyr[1]['WK_GS']
-                elif plyr[1]['WK_G'] > 0:
-                    val += plyr[1][stat] / plyr[1]['SEASON_G'] \
-                        * plyr[1]['WK_G']
-            res[stat] = val
-
-        # Handle ratio stats
-        if res['IP'] > 0:
-            res['WHIP'] = (res['BB'] + res['H']) / res['IP']
-            res['ERA'] = res['ER'] * 9 / res['IP']
-        else:
-            res['WHIP'] = None
-            res['ERA'] = None
-
-        # Delete the temporary values used to calculate the ratio stats
-        res = res.drop(index=temp_stat_cols)
-
-        return res
-
-    def _is_counting_stat(self, stat):
-        return stat in ['R', 'HR', 'RBI', 'SB', 'W', 'SO', 'SV', 'HLD']
-
-    def _is_highest_better(self, stat):
-        return stat not in ['ERA', 'WHIP']
-
-
 class Builder:
     """Class that generates roster permuations suitable for evaluation"""
     def __init__(self, positions):
@@ -321,6 +201,9 @@ class Builder:
             finally:
                 roster = orig_roster
                 player.selected_position = np.nan
+
+    def max_players(self):
+        return len(self.positions)
 
     def _get_player_by_pos(self, roster, pos, occurance):
         cum_occurance = 0
