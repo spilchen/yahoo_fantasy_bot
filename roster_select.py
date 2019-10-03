@@ -341,6 +341,8 @@ class ManagerBot:
                     continue
                 if plyr['position_type'] != pos_type:
                     continue
+                if plyr['status'] != '':
+                    continue
 
                 print("Player: {} Positions: {}".
                       format(plyr['name'], plyr['eligible_positions']))
