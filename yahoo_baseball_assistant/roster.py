@@ -223,9 +223,13 @@ class Builder:
         return cum_occurance
 
     def _has_empty_position_slot(self, roster, pos):
-        assert(pos in self.pos_count)
-        num = self._get_num_players_at_pos(roster, pos)
-        return num < self.pos_count[pos]
+        # Not all positions may be tracked.  Player injury could be eligible to
+        # go to the IR slot.
+        if pos in self.pos_count:
+            num = self._get_num_players_at_pos(roster, pos)
+            return num < self.pos_count[pos]
+        else:
+            return False
 
     def _swap_eligible_pos_recurse(self, roster, player, checked_pos):
         """Recursively swap positions with players until all positions are used

@@ -76,26 +76,17 @@ def show_two_start_pitchers(my_df):
         print(plyr[1]['name'])
 
 
-def manual_select_players(ppool, lineup, opp_team_name, opp_sum, bot):
+def manual_select_players(ppool, opp_team_name, opp_sum, bot):
     if opp_sum is None:
         print("Must pick an opponent")
         return
 
-    bot.print_roster(lineup)
-    bot.show_score(lineup, opp_team_name, opp_sum)
+    bot.print_roster()
+    bot.show_score(opp_team_name, opp_sum)
     print("Enter the name of the player to remove: ")
     pname_rem = input().rstrip()
     print("Enter the name of the player to add: ")
     pname_add = input().rstrip()
-
-    plyr_del = None
-    for del_idx, p in enumerate(lineup):
-        if p['name'] == pname_rem:
-            plyr_del = p
-            break
-    if plyr_del is None:
-        print("Could not find player in your lineup: {}".format(pname_rem))
-        return
 
     plyr_add_df = ppool[ppool['name'] == pname_add]
     if(len(plyr_add_df.index) == 0):
@@ -104,24 +95,40 @@ def manual_select_players(ppool, lineup, opp_team_name, opp_sum, bot):
     if(len(plyr_add_df.index) > 1):
         print("Found more than one player!: {}".format(pname_add))
         return
-
     plyr_add = plyr_add_df.iloc(0)[0]
 
-    assert(type(plyr_del.selected_position) == str)
-    if plyr_del.selected_position not in plyr_add['eligible_positions']:
-        print("Position {} is not a valid position for {}: {}".format(
-            plyr_del.selected_position,
-            plyr_add['name'],
-            plyr_add['eligible_positions']))
+    try:
+        bot.swap_player(pname_rem, plyr_add)
+    except (LookupError, ValueError) as e:
+        print(e)
         return
 
-    plyr_add['selected_position'] = plyr_del['selected_position']
-    plyr_del['selected_position'] = np.nan
-    lineup.append(plyr_add)
-    del lineup[del_idx]
+    bot.print_roster()
+    bot.show_score(opp_team_name, opp_sum)
 
-    bot.print_roster(lineup)
-    bot.show_score(lineup, opp_team_name, opp_sum)
+
+def auto_select_players(my_df, opp_sum):
+    if opp_sum is None:
+        print("Must pick an opponent")
+        return
+
+    print("")
+    print("Number of iterations: ")
+    try:
+        num_iters = int(input())
+    except ValueError:
+        print("*** input a valid number")
+        return
+    print("Stat categories to rank (delimited with comma):")
+    categories_combined = input()
+    categories = categories_combined.rstrip().split(",")
+    print(categories)
+
+    try:
+        bot.auto_select_players(my_df, opp_sum, num_iters, categories)
+    except KeyError as e:
+        print(e)
+        return
 
 
 def print_blacklist_menu():
@@ -208,6 +215,7 @@ class ManagerBot:
         Display = self._get_display_class()
         self.display = Display(self.cfg)
         self.blacklist = self._load_blacklist()
+        self.lineup = None
 
     def cache_dir(self):
         dir = self.cfg['Cache']['dir']
@@ -215,9 +223,9 @@ class ManagerBot:
             os.mkdir(dir)
         return dir
 
-    def roster_cache_file(self):
+    def lineup_cache_file(self):
         dir = self.cache_dir()
-        return "{}/my_roster.pkl".format(dir)
+        return "{}/lineup.pkl".format(dir)
 
     def player_pool_cache_file(self):
         dir = self.cache_dir()
@@ -264,8 +272,8 @@ class ManagerBot:
         return self.pred_bldr
 
     def save(self):
-        with open(self.roster_cache_file(), "wb") as f:
-            pickle.dump(my_roster, f)
+        with open(self.lineup_cache_file(), "wb") as f:
+            pickle.dump(self.lineup, f)
         self.save_prediction_builder()
 
     def save_prediction_builder(self):
@@ -316,12 +324,12 @@ class ManagerBot:
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)
 
-    def load_roster(self):
-        if os.path.exists(self.roster_cache_file()):
-            with open(self.roster_cache_file(), "rb") as f:
-                my_roster = pickle.load(f)
+    def load_lineup(self):
+        if os.path.exists(self.lineup_cache_file()):
+            with open(self.lineup_cache_file(), "rb") as f:
+                self.lineup = pickle.load(f)
         else:
-            my_roster = []
+            self.lineup = []
             stat_categories = self.lg.stat_categories()
             for pos_type in self._get_position_types():
                 stats = []
@@ -329,10 +337,9 @@ class ManagerBot:
                     if sc['position_type'] == pos_type and \
                             self._is_predicted_stat(sc['display_name']):
                         stats.append(sc['display_name'])
-                self.initial_fit(stats, my_roster, pos_type)
-        return my_roster
+                self.initial_fit(stats, pos_type)
 
-    def initial_fit(self, categories, my_roster, pos_type):
+    def initial_fit(self, categories, pos_type):
         selector = roster.PlayerSelector(self.ppool)
         selector.rank(categories)
         for plyr in selector.select():
@@ -348,46 +355,29 @@ class ManagerBot:
                       format(plyr['name'], plyr['eligible_positions']))
 
                 plyr['selected_position'] = np.nan
-                my_roster = self.my_team_bldr.fit_if_space(my_roster, plyr)
+                self.lineup = self.my_team_bldr.fit_if_space(self.lineup, plyr)
             except LookupError:
                 pass
-            if len(my_roster) == self.my_team_bldr.max_players():
+            if len(self.lineup) == self.my_team_bldr.max_players():
                 break
-        return my_roster
 
-    def print_roster(self, lineup):
-        self.display.printRoster(lineup)
+    def print_roster(self, lineup=None):
+        self.display.printRoster(lineup if lineup is not None
+                                 else self.lineup)
 
-    def auto_select_players(self, ppool, lineup, opp_sum):
-        if opp_sum is None:
-            print("Must pick an opponent")
-            return lineup
-
-        print("")
-        print("Number of iterations: ")
-        try:
-            num_iters = int(input())
-        except ValueError:
-            print("*** input a valid number")
-            return lineup
-        print("Stat categories to rank (delimited with comma):")
-        categories_combined = input()
-        categories = categories_combined.rstrip().split(",")
-        print(categories)
-
+    def auto_select_players(self, ppool, opp_sum, num_iters, categories):
         # Filter out any players from the lineup as we don't want to consider
         # them again.
         indexColumn = self.cfg['Prediction']['indexColumn']
-        lineup_ids = [e[indexColumn] for e in lineup]
+        lineup_ids = [e[indexColumn] for e in self.lineup]
         avail_plyrs = ppool[~ppool[indexColumn].isin(lineup_ids)]
         selector = roster.PlayerSelector(avail_plyrs)
         try:
             selector.rank(categories)
         except KeyError:
-            print("Categories are not valid: {}".format(categories))
-            return lineup
+            raise KeyError("Categories are not valid: {}".format(categories))
 
-        (orig_w, orig_l, _) = self.compute_score(lineup, opp_sum)
+        (orig_w, orig_l, _) = self.compute_score(self.lineup, opp_sum)
         for i, plyr in enumerate(selector.select()):
             if i+1 > num_iters:
                 break
@@ -398,9 +388,9 @@ class ManagerBot:
                   format(plyr['name'], plyr['eligible_positions']))
 
             plyr['selected_position'] = np.nan
-            best_lineup = copy_roster(lineup)
-            for potential_lineup in self.my_team_bldr.enumerate_fit(lineup,
-                                                                    plyr):
+            best_lineup = copy_roster(self.lineup)
+            for potential_lineup in \
+                    self.my_team_bldr.enumerate_fit(self.lineup, plyr):
                 (new_w, new_l, _) = self.compute_score(potential_lineup,
                                                        opp_sum)
                 if is_new_score_better(orig_w, orig_l, new_w, new_l):
@@ -408,8 +398,7 @@ class ManagerBot:
                     (orig_w, orig_l) = (new_w, new_l)
                     print("  *** Found better lineup")
                     self.print_roster(best_lineup)
-            lineup = copy_roster(best_lineup)
-        return lineup
+            self.lineup = copy_roster(best_lineup)
 
     def compute_score(self, lineup, opp_sum):
         df = pd.DataFrame(data=lineup, columns=lineup[0].index)
@@ -448,11 +437,11 @@ class ManagerBot:
 
         return (win, loss)
 
-    def show_score(self, lineup, opp_team_name, opp_sum):
+    def show_score(self, opp_team_name, opp_sum):
         if opp_sum is None:
             print("No opponent selected")
         else:
-            (w, l, my_sum) = self.compute_score(lineup, opp_sum)
+            (w, l, my_sum) = self.compute_score(self.lineup, opp_sum)
             print("Against '{}' your roster will score: {} - {}".
                   format(opp_team_name, w, l))
             print("")
@@ -480,6 +469,26 @@ class ManagerBot:
         for plyr in ppool.iterrows():
             if pos in plyr[1]['eligible_positions']:
                 self.display.printPlayer(pos, plyr)
+
+    def find_in_lineup(self, name):
+        for idx, p in enumerate(self.lineup):
+            if p['name'] == name:
+                return idx
+        raise LookupError("Could not find player: " + name)
+
+    def swap_player(self, plyr_name_del, plyr_add):
+        idx = self.find_in_lineup(plyr_name_del)
+        plyr_del = self.lineup[idx]
+        assert(type(plyr_del.selected_position) == str)
+        if plyr_del.selected_position not in plyr_add['eligible_positions']:
+            raise ValueError("Position {} is not a valid position for {}: {}".
+                             format(plyr_del.selected_position,
+                                    plyr_add['name'],
+                                    plyr_add['eligible_positions']))
+
+        plyr_add['selected_position'] = plyr_del['selected_position']
+        plyr_del['selected_position'] = np.nan
+        self.lineup[idx] = plyr_add
 
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
@@ -543,7 +552,7 @@ if __name__ == '__main__':
     my_df = bot.fetch_player_pool()
 
     potential_team = roster.Container(None, None)
-    my_roster = bot.load_roster()
+    bot.load_lineup()
 
     while True:
         print_main_menu()
@@ -552,23 +561,22 @@ if __name__ == '__main__':
         if opt == "P":
             (opp_team_name, opp_sum) = pick_opponent(bot)
         elif opt == "R":
-            bot.print_roster(my_roster)
+            bot.print_roster()
         elif opt == "S":
             if opp_sum is None:
                 print("No opponent selected")
             else:
-                bot.show_score(my_roster, opp_team_name, opp_sum)
+                bot.show_score(opp_team_name, opp_sum)
         elif opt == "A":
             if opp_sum is None:
                 print("No opponent selected")
             else:
-                my_roster = bot.auto_select_players(my_df, my_roster, opp_sum)
+                auto_select_players(my_df, opp_sum)
         elif opt == "M":
             if opp_sum is None:
                 print("No opponent selected")
             else:
-                manual_select_players(my_df, my_roster, opp_team_name, opp_sum,
-                                      bot)
+                manual_select_players(my_df, opp_team_name, opp_sum, bot)
         elif opt == "T":
             show_two_start_pitchers(my_df)
         elif opt == "L":
