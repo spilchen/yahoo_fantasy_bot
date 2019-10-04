@@ -308,13 +308,15 @@ class PlayerPrinter:
     def __init__(self, cfg):
         pass
 
-    def printRoster(self, roster):
+    def printRoster(self, lineup, bench):
         """Print out the roster to standard out
 
         :param cfg: Instance of the config
         :type cfg: configparser
         :param lineup: Roster to print out
         :type lineup: List
+        :param bench: Players on the bench
+        :type bench: List
         """
         print("{:4}: {:20}   "
               "{}/{}/{}/{}/{}/{}".
@@ -322,7 +324,7 @@ class PlayerPrinter:
         for pos in ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'Util',
                     'SP', 'SP', 'SP', 'SP', 'SP', 'RP', 'RP', 'RP', 'RP',
                     'RP']:
-            for plyr in roster:
+            for plyr in lineup:
                 if plyr['selected_position'] == pos:
                     if pos in ["SP", "RP"]:
                         print("{:4}: {:20}   "
@@ -343,6 +345,10 @@ class PlayerPrinter:
                               "{}/{}/{}/{}/{}/{}".
                               format('P', '', 'W', 'HLD', 'SV', 'SO', 'ERA',
                                      'WHIP'))
+        print("")
+        print("Bench")
+        for plyr in bench:
+            print(plyr['name'])
 
     def printListPlayerHeading(self, pos):
         if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:

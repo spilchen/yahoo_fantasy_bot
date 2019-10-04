@@ -216,6 +216,7 @@ class ManagerBot:
         self.display = Display(self.cfg)
         self.blacklist = self._load_blacklist()
         self.lineup = None
+        self.bench = []
 
     def cache_dir(self):
         dir = self.cfg['Cache']['dir']
@@ -226,6 +227,10 @@ class ManagerBot:
     def lineup_cache_file(self):
         dir = self.cache_dir()
         return "{}/lineup.pkl".format(dir)
+
+    def bench_cache_file(self):
+        dir = self.cache_dir()
+        return "{}/bench.pkl".format(dir)
 
     def player_pool_cache_file(self):
         dir = self.cache_dir()
@@ -243,6 +248,26 @@ class ManagerBot:
         else:
             blacklist = []
         return blacklist
+
+    def pick_bench(self):
+        """Pick the bench spots based on the current roster."""
+        self.bench = []
+        bench_spots = int(self.cfg['League']['benchSpots'])
+        if bench_spots == 0:
+            return
+
+        # We'll pick the bench spots by picking players not in your lineup but
+        # have the highest ownership %.
+        lineup_names = [e['name'] for e in self.lineup]
+        top_owners = self.ppool.sort_values(by=["percent_owned"],
+                                            ascending=False)
+        for plyr in top_owners.iterrows():
+            p = plyr[1]
+            if p['name'] not in lineup_names:
+                print("Adding {} to bench...".format(p['name']))
+                self.bench.append(p)
+                if len(self.bench) == bench_spots:
+                    break
 
     def _save_blacklist(self):
         fn = self._blacklist_cache_file()
@@ -274,6 +299,8 @@ class ManagerBot:
     def save(self):
         with open(self.lineup_cache_file(), "wb") as f:
             pickle.dump(self.lineup, f)
+        with open(self.bench_cache_file(), "wb") as f:
+            pickle.dump(self.bench, f)
         self.save_prediction_builder()
 
     def save_prediction_builder(self):
@@ -284,6 +311,18 @@ class ManagerBot:
         saver = getattr(module, self.cfg['Prediction']['builderClassSaver'])
         saver(self.pred_bldr, self.cfg)
 
+    def fetch_cur_lineup(self):
+        """Fetch the current lineup as set in Yahoo!"""
+        all_mine = self.lg.to_team(self.lg.team_key()).roster(
+            self.lg.current_week() + 1)
+        pct_owned = self.lg.percent_owned([e['player_id'] for e in all_mine])
+        for p, pct_own in zip(all_mine, pct_owned):
+            if p['selected_position'] == 'BN':
+                p['selected_position'] = np.nan
+            assert(pct_own['player_id'] == p['player_id'])
+            p['percent_owned'] = pct_own['percent_owned']
+        return all_mine
+
     def fetch_player_pool(self):
         """Build the roster pool of players"""
         if self.ppool is None:
@@ -291,11 +330,7 @@ class ManagerBot:
                 with open(self.player_pool_cache_file(), "rb") as f:
                     self.ppool = pickle.load(f)
             else:
-                all_mine = self.lg.to_team(self.lg.team_key()).roster(
-                    self.lg.current_week() + 1)
-                for p in all_mine:
-                    if p['selected_position'] == 'BN':
-                        p['selected_position'] = np.nan
+                all_mine = self.fetch_cur_lineup()
                 logger.info("Fetching free agents")
                 plyr_pool = self.lg.free_agents(None) + all_mine
                 logger.info("Free agents fetch complete.  {} players in pool"
@@ -339,6 +374,13 @@ class ManagerBot:
                         stats.append(sc['display_name'])
                 self.initial_fit(stats, pos_type)
 
+    def load_bench(self):
+        if os.path.exists(self.bench_cache_file()):
+            with open(self.bench_cache_file(), "rb") as f:
+                self.bench = pickle.load(f)
+        else:
+            self.pick_bench()
+
     def initial_fit(self, categories, pos_type):
         selector = roster.PlayerSelector(self.ppool)
         selector.rank(categories)
@@ -361,9 +403,8 @@ class ManagerBot:
             if len(self.lineup) == self.my_team_bldr.max_players():
                 break
 
-    def print_roster(self, lineup=None):
-        self.display.printRoster(lineup if lineup is not None
-                                 else self.lineup)
+    def print_roster(self):
+        self.display.printRoster(self.lineup, self.bench)
 
     def auto_select_players(self, ppool, opp_sum, num_iters, categories):
         # Filter out any players from the lineup as we don't want to consider
@@ -397,8 +438,9 @@ class ManagerBot:
                     best_lineup = copy_roster(potential_lineup)
                     (orig_w, orig_l) = (new_w, new_l)
                     print("  *** Found better lineup")
-                    self.print_roster(best_lineup)
             self.lineup = copy_roster(best_lineup)
+            self.pick_bench()
+            self.print_roster()
 
     def compute_score(self, lineup, opp_sum):
         df = pd.DataFrame(data=lineup, columns=lineup[0].index)
@@ -489,6 +531,7 @@ class ManagerBot:
         plyr_add['selected_position'] = plyr_del['selected_position']
         plyr_del['selected_position'] = np.nan
         self.lineup[idx] = plyr_add
+        self.pick_bench()
 
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
@@ -553,6 +596,7 @@ if __name__ == '__main__':
 
     potential_team = roster.Container(None, None)
     bot.load_lineup()
+    bot.load_bench()
 
     while True:
         print_main_menu()
