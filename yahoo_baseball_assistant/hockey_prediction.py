@@ -29,7 +29,7 @@ class Builder:
         week = lg.current_week() + 1
         skaters = pd.read_csv(skaters_csv, index_col='name')
         goalies = pd.read_csv(goalies_csv, index_col='name')
-        self.ppool = pd.concat([skaters, goalies])
+        self.ppool = pd.concat([skaters, goalies], sort=True)
         self.nhl_scraper = nhl.Scraper()
         (wk_start_date, wk_end_date) = lg.week_date_range(week)
         self.team_game_count = self.nhl_scraper.games_count(wk_start_date,
@@ -112,7 +112,7 @@ class PlayerPrinter:
     def __init__(self, cfg):
         pass
 
-    def printRoster(self, lineup, bench):
+    def printRoster(self, lineup, bench, injury_reserve):
         """Print out the roster to standard out
 
         :param cfg: Instance of the config
@@ -121,6 +121,8 @@ class PlayerPrinter:
         :type lineup: List
         :param bench: Players on the bench
         :type bench: List
+        :param injury_reserve: Players on the injury reserve
+        :type injury_reserve: List
         """
         first_goalie = True
         print("{:4}: {:20}   "
@@ -150,6 +152,10 @@ class PlayerPrinter:
         print("")
         print("Bench")
         for plyr in bench:
+            print(plyr['name'])
+        print("")
+        print("Injury Reserve")
+        for plyr in injury_reserve:
             print(plyr['name'])
 
     def printListPlayerHeading(self, pos):

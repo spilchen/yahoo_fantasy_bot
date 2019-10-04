@@ -211,11 +211,13 @@ class ManagerBot:
         self.blacklist = self._load_blacklist()
         self.lineup = None
         self.bench = []
+        self.injury_reserve = []
 
         self.init_prediction_builder()
         self.fetch_player_pool()
         self.load_lineup()
         self.load_bench()
+        self.pick_injury_reserve()
 
     def cache_dir(self):
         dir = self.cfg['Cache']['dir']
@@ -255,9 +257,10 @@ class ManagerBot:
         if bench_spots == 0:
             return
 
-        # We'll pick the bench spots by picking players not in your lineup but
-        # have the highest ownership %.
-        lineup_names = [e['name'] for e in self.lineup]
+        # We'll pick the bench spots by picking players not in your lineup or
+        # IR but have the highest ownership %.
+        lineup_names = [e['name'] for e in self.lineup] + \
+            [e['name'] for e in self.injury_reserve]
         top_owners = self.ppool.sort_values(by=["percent_owned"],
                                             ascending=False)
         for plyr in top_owners.iterrows():
@@ -267,6 +270,25 @@ class ManagerBot:
                 self.bench.append(p)
                 if len(self.bench) == bench_spots:
                     break
+
+    def pick_injury_reserve(self):
+        """Pick the injury reserve slots"""
+        self.injury_reserve = []
+        ir_spots = int(self.cfg['League']['irSpots'])
+        if ir_spots == 0:
+            return
+
+        ir = []
+        roster = self.lg.to_team(self.lg.team_key()).roster(
+            self.lg.current_week() + 1)
+        for plyr in roster:
+            if plyr['status'] == 'IR':
+                ir.append(plyr)
+
+        if len(ir) < ir_spots:
+            self.injury_reserve = ir
+        else:
+            assert(False), "Need to implement pruning of IR"
 
     def _save_blacklist(self):
         fn = self._blacklist_cache_file()
@@ -401,7 +423,7 @@ class ManagerBot:
                 break
 
     def print_roster(self):
-        self.display.printRoster(self.lineup, self.bench)
+        self.display.printRoster(self.lineup, self.bench, self.injury_reserve)
 
     def auto_select_players(self, opp_sum, num_iters, categories):
         # Filter out any players from the lineup as we don't want to consider
