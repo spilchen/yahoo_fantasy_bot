@@ -44,6 +44,7 @@ def print_main_menu():
     print("T - Show two start pitchers")
     print("L - List players")
     print("B - Blacklist players")
+    print("Y - Apply roster moves")
     print("X - Exit")
     print("")
     print("Pick a selection:")
@@ -192,6 +193,10 @@ def pick_opponent(bot):
         return (None, None)
     else:
         return bot.sum_opponent(opp_team_key)
+
+
+def apply_roster_moves(bot):
+    bot.apply_roster_moves(dry_run=True)
 
 
 class ManagerBot:
@@ -561,6 +566,56 @@ class ManagerBot:
         self.lineup[idx] = plyr_add
         self.pick_bench()
 
+    def apply_roster_moves(self, dry_run):
+        """Make roster changes with Yahoo!
+
+        :param dry_run: Just enumerate the roster moves but don't apply yet
+        :type dry_run: bool
+        """
+        drops = []
+        adds = []
+
+        orig_roster = self.lg.to_team(self.lg.team_key()).roster(
+            self.lg.current_week() + 1)
+        orig_roster_ids = [e['player_id'] for e in orig_roster]
+        new_roster_ids = [e['player_id'] for e in self.lineup] + \
+            [e['player_id'] for e in self.bench] + \
+            [e['player_id'] for e in self.injury_reserve]
+        orig_ir = [e for e in orig_roster if e['selected_position'] == 'IR']
+
+        for plyr in orig_roster:
+            if plyr['player_id'] not in new_roster_ids:
+                drops.append(plyr)
+                print("Drop " + plyr['name'])
+
+        pos_change = []
+        for plyr in orig_ir:
+            if plyr['player_id'] in new_roster_ids:
+                pos_change.append({'player_id': plyr['player_id'],
+                                   'selected_position': 'BN'})
+                print("Move {} to BN".format(plyr['name']))
+
+        for plyr in self.injury_reserve:
+            assert(plyr['player_id'] in orig_roster_ids)
+            pos_change.append({'player_id': plyr['player_id'],
+                               'selected_position': 'IR'})
+            print("Move {} to IR".format(plyr['name']))
+
+        for plyr in self.lineup:
+            if plyr['player_id'] not in orig_roster_ids:
+                adds.append(plyr)
+                print("Add " + plyr['name'])
+
+        pos_change = []
+        for plyr in self.lineup:
+            pos_change.append(plyr)
+            print("Move {} to {}".format(plyr['name'],
+                                         plyr['selected_position']))
+        for plyr in self.bench:
+            pos_change.append({plyr['player_id']: plyr['player_id'],
+                               plyr['selected_position']: 'BN'})
+            print("Move {} to BN".format(plyr['name']))
+
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
 
@@ -647,6 +702,8 @@ if __name__ == '__main__':
             list_players(bot)
         elif opt == "B":
             manage_blacklist(bot)
+        elif opt == "Y":
+            apply_roster_moves(bot)
         elif opt == "X":
             break
         else:
