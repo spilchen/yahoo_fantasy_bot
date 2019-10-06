@@ -6,6 +6,7 @@ from nhl_scraper import nhl
 import logging
 import pickle
 import os
+import datetime
 from yahoo_baseball_assistant import utils
 
 
@@ -26,12 +27,13 @@ class Builder:
     :type goalies_csv: str
     """
     def __init__(self, lg, skaters_csv, goalies_csv):
-        week = lg.current_week() + 1
         skaters = pd.read_csv(skaters_csv, index_col='name')
         goalies = pd.read_csv(goalies_csv, index_col='name')
         self.ppool = pd.concat([skaters, goalies], sort=True)
         self.nhl_scraper = nhl.Scraper()
-        (wk_start_date, wk_end_date) = lg.week_date_range(week)
+        wk_start_date = lg.edit_date()
+        assert(wk_start_date.weekday() == 0)
+        wk_end_date = wk_start_date + datetime.timedelta(days=6)
         self.team_game_count = self.nhl_scraper.games_count(wk_start_date,
                                                             wk_end_date)
         self.nhl_players = self.nhl_scraper.players()

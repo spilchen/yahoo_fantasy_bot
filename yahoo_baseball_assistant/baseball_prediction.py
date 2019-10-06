@@ -38,8 +38,9 @@ class Builder:
         self.ts = ts
         self.es = es
         self.tss = tss
-        week = lg.current_week() + 1
-        (self.wk_start_date, self.wk_end_date) = lg.week_date_range(week)
+        self.wk_start_date = lg.edit_date()
+        assert(self.wk_start_date.weekday() == 0)
+        self.wk_end_date = self.wk_start_date + datetime.timedelta(days=6)
         self.season_end_date = datetime.date(self.wk_end_date.year, 12, 31)
 
     def __getstate__(self):

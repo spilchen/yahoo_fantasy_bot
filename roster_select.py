@@ -197,6 +197,11 @@ def pick_opponent(bot):
 
 def apply_roster_moves(bot):
     bot.apply_roster_moves(dry_run=True)
+    print("")
+    print("Type 'yes' to apply the roster moves:")
+    proceed = input()
+    if proceed == 'yes':
+        bot.apply_roster_moves(dry_run=False)
 
 
 class ManagerBot:
@@ -284,8 +289,7 @@ class ManagerBot:
             return
 
         ir = []
-        roster = self.lg.to_team(self.lg.team_key()).roster(
-            self.lg.current_week() + 1)
+        roster = self._get_orig_roster()
         for plyr in roster:
             if plyr['status'] == 'IR':
                 ir.append(plyr)
@@ -338,8 +342,7 @@ class ManagerBot:
 
     def fetch_cur_lineup(self):
         """Fetch the current lineup as set in Yahoo!"""
-        all_mine = self.lg.to_team(self.lg.team_key()).roster(
-            self.lg.current_week() + 1)
+        all_mine = self._get_orig_roster()
         pct_owned = self.lg.percent_owned([e['player_id'] for e in all_mine])
         for p, pct_own in zip(all_mine, pct_owned):
             if p['selected_position'] == 'BN':
@@ -454,6 +457,7 @@ class ManagerBot:
 
             plyr['selected_position'] = np.nan
             best_lineup = copy_roster(self.lineup)
+            found_better = False
             for potential_lineup in \
                     self.my_team_bldr.enumerate_fit(self.lineup, plyr):
                 (new_w, new_l, _) = self.compute_score(potential_lineup,
@@ -462,9 +466,11 @@ class ManagerBot:
                     best_lineup = copy_roster(potential_lineup)
                     (orig_w, orig_l) = (new_w, new_l)
                     print("  *** Found better lineup")
+                    found_better = True
             self.lineup = copy_roster(best_lineup)
-            self.pick_bench()
-            self.print_roster()
+            if found_better:
+                self.pick_bench()
+                self.print_roster()
 
     def compute_score(self, lineup, opp_sum):
         df = pd.DataFrame(data=lineup, columns=lineup[0].index)
@@ -572,49 +578,10 @@ class ManagerBot:
         :param dry_run: Just enumerate the roster moves but don't apply yet
         :type dry_run: bool
         """
-        drops = []
-        adds = []
-
-        orig_roster = self.lg.to_team(self.lg.team_key()).roster(
-            self.lg.current_week() + 1)
-        orig_roster_ids = [e['player_id'] for e in orig_roster]
-        new_roster_ids = [e['player_id'] for e in self.lineup] + \
-            [e['player_id'] for e in self.bench] + \
-            [e['player_id'] for e in self.injury_reserve]
-        orig_ir = [e for e in orig_roster if e['selected_position'] == 'IR']
-
-        for plyr in orig_roster:
-            if plyr['player_id'] not in new_roster_ids:
-                drops.append(plyr)
-                print("Drop " + plyr['name'])
-
-        pos_change = []
-        for plyr in orig_ir:
-            if plyr['player_id'] in new_roster_ids:
-                pos_change.append({'player_id': plyr['player_id'],
-                                   'selected_position': 'BN'})
-                print("Move {} to BN".format(plyr['name']))
-
-        for plyr in self.injury_reserve:
-            assert(plyr['player_id'] in orig_roster_ids)
-            pos_change.append({'player_id': plyr['player_id'],
-                               'selected_position': 'IR'})
-            print("Move {} to IR".format(plyr['name']))
-
-        for plyr in self.lineup:
-            if plyr['player_id'] not in orig_roster_ids:
-                adds.append(plyr)
-                print("Add " + plyr['name'])
-
-        pos_change = []
-        for plyr in self.lineup:
-            pos_change.append(plyr)
-            print("Move {} to {}".format(plyr['name'],
-                                         plyr['selected_position']))
-        for plyr in self.bench:
-            pos_change.append({plyr['player_id']: plyr['player_id'],
-                               plyr['selected_position']: 'BN'})
-            print("Move {} to BN".format(plyr['name']))
+        roster_chg = RosterChanger(self.lg, dry_run, self._get_orig_roster(),
+                                   self.lineup, self.bench,
+                                   self.injury_reserve)
+        roster_chg.apply()
 
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
@@ -648,6 +615,123 @@ class ManagerBot:
 
     def _is_predicted_stat(self, stat):
         return stat in self.cfg['League']['predictedStatCategories'].split(',')
+
+    def _get_orig_roster(self):
+        return self.lg.to_team(self.lg.team_key()).roster(
+            day=self.lg.edit_date())
+
+
+class RosterChanger:
+    def __init__(self, lg, dry_run, orig_roster, lineup, bench,
+                 injury_reserve):
+        self.lg = lg
+        self.tm = lg.to_team(lg.team_key())
+        self.dry_run = dry_run
+        self.orig_roster = orig_roster
+        self.lineup = lineup
+        self.bench = bench
+        self.injury_reserve = injury_reserve
+        self.orig_roster_ids = [e['player_id'] for e in orig_roster]
+        self.new_roster_ids = [e['player_id'] for e in lineup] + \
+            [e['player_id'] for e in bench] + \
+            [e['player_id'] for e in injury_reserve]
+        self.adds = []
+        self.drops = []
+
+    def apply(self):
+        self._calc_player_drops()
+        self._calc_player_adds()
+        self._apply_ir_moves()
+        self._apply_player_adds_and_drops()
+        self._apply_position_selector()
+
+    def _calc_player_drops(self):
+        self.drops = []
+        for plyr in self.orig_roster:
+            if plyr['player_id'] not in self.new_roster_ids:
+                self.drops.append(plyr)
+
+    def _calc_player_adds(self):
+        self.adds = []
+        for plyr in self.lineup:
+            if plyr['player_id'] not in self.orig_roster_ids:
+                self.adds.append(plyr)
+
+    def _apply_player_adds_and_drops(self):
+        while len(self.drops) != len(self.adds):
+            if len(self.drops) > len(self.adds):
+                plyr = self.drops.pop()
+                print("Drop " + plyr['name'])
+                if not self.dry_run:
+                    self.tm.drop_player(plyr['player_id'])
+            else:
+                plyr = self.adds.pop()
+                print("Add " + plyr['name'])
+                if not self.dry_run:
+                    self.tm.add_player(plyr['player_id'])
+
+        for add_plyr, drop_plyr in zip(self.adds, self.drops):
+            print("Add {} and drop {}".format(add_plyr['name'],
+                                              drop_plyr['name']))
+            if not self.dry_run:
+                self.tm.add_and_drop_players(add_plyr['player_id'],
+                                             drop_plyr['player_id'])
+
+    def _apply_one_player_drop(self):
+        if len(self.drops) > 0:
+            plyr = self.drops.pop()
+            print("Drop " + plyr['name'])
+            if not self.dry_run:
+                self.tm.drop_player(plyr['player_id'])
+
+    def _apply_ir_moves(self):
+        orig_ir = [e for e in self.orig_roster
+                   if e['selected_position'] == 'IR']
+        new_ir_ids = [e['player_id'] for e in self.injury_reserve]
+        pos_change = []
+        num_drops = 0
+        for plyr in orig_ir:
+            if plyr['player_id'] in self.new_roster_ids and \
+                    plyr['player_id'] not in new_ir_ids:
+                pos_change.append({'player_id': plyr['player_id'],
+                                   'selected_position': 'BN',
+                                   'name': plyr['name']})
+                num_drops += 1
+
+        for plyr in self.injury_reserve:
+            assert(plyr['player_id'] in self.orig_roster_ids)
+            pos_change.append({'player_id': plyr['player_id'],
+                               'selected_position': 'IR',
+                               'name': plyr['name']})
+            num_drops -= 1
+
+        # Prior to changing any of the IR spots, we may need to drop players.
+        # The number has been precalculated in the above loops.  Basically the
+        # different in the number of players moving out of IR v.s. moving into
+        # IR.
+        for _ in range(num_drops):
+            self._apply_one_player_drop()
+
+        for plyr in pos_change:
+            print("Move {} to {}".format(plyr['name'],
+                                         plyr['selected_position']))
+        if len(pos_change) > 0 and not self.dry_run:
+            self.tm.change_positions(self.lg.edit_date(), pos_change)
+
+    def _apply_position_selector(self):
+        pos_change = []
+        for plyr in self.lineup:
+            pos_change.append({'player_id': plyr['player_id'],
+                               'selected_position': plyr['selected_position']})
+            print("Move {} to {}".format(plyr['name'],
+                                         plyr['selected_position']))
+        for plyr in self.bench:
+            pos_change.append({'player_id': plyr['player_id'],
+                               'selected_position': 'BN'})
+            print("Move {} to BN".format(plyr['name']))
+
+        if not self.dry_run:
+            self.tm.change_positions(self.lg.edit_date(), pos_change)
 
 
 if __name__ == '__main__':
