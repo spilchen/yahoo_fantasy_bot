@@ -3,10 +3,14 @@
 """Command line interface to select a roster against an opponent
 
 Usage:
-  roster_select.py <cfg_file>
+  roster_select.py [--erase-cache=<lvl>] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the sample format.
+
+Options:
+    -e, --erase-cache=<lvl>   Erase the cache at the given level.  Available
+                              levels are: ppool, lineup, builder, all
 """
 from docopt import docopt
 from yahoo_oauth import OAuth2
@@ -48,20 +52,6 @@ def print_main_menu():
     print("X - Exit")
     print("")
     print("Pick a selection:")
-
-
-def is_new_score_better(orig_w, orig_l, new_w, new_l):
-    if orig_w + orig_l > 0:
-        orig_pct = orig_w / (orig_w + orig_l)
-    else:
-        orig_pct = 0.5
-
-    if new_w + new_l > 0:
-        new_pct = new_w / (new_w + new_l)
-    else:
-        new_pct = 0.5
-
-    return orig_pct < new_pct
 
 
 def copy_roster(roster):
@@ -204,11 +194,125 @@ def apply_roster_moves(bot):
         bot.apply_roster_moves(dry_run=False)
 
 
+class Cache:
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def cache_dir(self):
+        dir = self.cfg['Cache']['dir']
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+        return dir
+
+    def lineup_cache_file(self):
+        dir = self.cache_dir()
+        return "{}/lineup.pkl".format(dir)
+
+    def bench_cache_file(self):
+        dir = self.cache_dir()
+        return "{}/bench.pkl".format(dir)
+
+    def player_pool_cache_file(self):
+        dir = self.cache_dir()
+        return "{}/ppool.pkl".format(dir)
+
+    def blacklist_cache_file(self):
+        dir = self.cache_dir()
+        return "{}/blacklist.pkl".format(dir)
+
+    def erase(self, levels):
+        if "all" in levels:
+            levels = "ppool,lineup,builder,bench"
+        for lvl in levels.split(','):
+            try:
+                if lvl == 'ppool':
+                    os.remove(self.player_pool_cache_file())
+                elif lvl == 'lineup':
+                    os.remove(self.lineup_cache_file())
+                elif lvl == 'builder':
+                    os.remove("{}/Builder.pkl".format(self.dir))
+                elif lvl == 'bench':
+                    os.remove(self.bench_cache_file())
+            except OSError:
+                pass
+
+
+class ScoreComparer:
+    """
+    Class that compares the scores of two lineups and computes whether it is
+    *better* (in the fantasy sense)
+    """
+    def __init__(self, scorer, opp_sum, lineup):
+        self.scorer = scorer
+        self.opp_sum = opp_sum
+        (self.orig_w, self.orig_l, _) = self.compute_score(lineup)
+
+    def compare_lineup(self, potential_lineup):
+        better_lineup = False
+        (new_w, new_l, _) = self.compute_score(potential_lineup)
+        if self._is_new_score_better(new_w, new_l):
+            self.orig_w = new_w
+            self.orig_l = new_l
+            better_lineup = True
+        return better_lineup
+
+    def compute_score(self, lineup):
+        df = pd.DataFrame(data=lineup, columns=lineup[0].index)
+        my_sum = self.scorer.summarize(df)
+        (w, l) = self._compare_scores(my_sum, self.opp_sum)
+        return (w, l, my_sum)
+
+    def _is_new_score_better(self, new_w, new_l):
+        if self.orig_w + self.orig_l > 0:
+            orig_pct = self.orig_w / (self.orig_w + self.orig_l)
+        else:
+            orig_pct = 0.5
+
+        if new_w + new_l > 0:
+            new_pct = new_w / (new_w + new_l)
+        else:
+            new_pct = 0.5
+
+        return orig_pct < new_pct
+
+    def _compare_scores(self, left, right):
+        """Determine how many points comparing two summarized stats together
+
+        :param left: Summarized stats to compare
+        :type left: Series
+        :param right: Summarized stats to compare
+        :type right: Series
+        :return: Number of wins and number of losses.
+        :rtype: Tuple of two ints
+        """
+        (win, loss) = (0, 0)
+        for l, r, name in zip(left, right, left.index):
+            if self.scorer.is_counting_stat(name):
+                conv_l = int(l)
+                conv_r = int(r)
+            else:
+                conv_l = round(l, 3)
+                conv_r = round(r, 3)
+            if self.scorer.is_highest_better(name):
+                if conv_l > conv_r:
+                    win += 1
+                elif conv_r > conv_l:
+                    loss += 1
+            else:
+                if conv_l < conv_r:
+                    win += 1
+                elif conv_r < conv_l:
+                    loss += 1
+
+        return (win, loss)
+
+
 class ManagerBot:
     """A class that encapsulates an automated Yahoo! fantasy manager.
     """
     def __init__(self, cfg):
         self.cfg = cfg
+        self.cache = Cache(self.cfg)
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
         self.lg = yfa.League(self.sc, cfg['League']['id'])
         self.pred_bldr = None
@@ -229,30 +333,8 @@ class ManagerBot:
         self.load_bench()
         self.pick_injury_reserve()
 
-    def cache_dir(self):
-        dir = self.cfg['Cache']['dir']
-        if not os.path.isdir(dir):
-            os.mkdir(dir)
-        return dir
-
-    def lineup_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/lineup.pkl".format(dir)
-
-    def bench_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/bench.pkl".format(dir)
-
-    def player_pool_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/ppool.pkl".format(dir)
-
-    def _blacklist_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/blacklist.pkl".format(dir)
-
     def _load_blacklist(self):
-        fn = self._blacklist_cache_file()
+        fn = self.cache.blacklist_cache_file()
         if os.path.exists(fn):
             with open(fn, "rb") as f:
                 blacklist = pickle.load(f)
@@ -293,6 +375,13 @@ class ManagerBot:
         for plyr in roster:
             if plyr['status'] == 'IR':
                 ir.append(plyr)
+                for idx, lp in enumerate(self.lineup):
+                    if lp['player_id'] == plyr['player_id']:
+                        del self.lineup[idx]
+                        break
+
+        if len(self.lineup) <= self.my_team_bldr.max_players():
+            self.fill_empty_spots()
 
         if len(ir) < ir_spots:
             self.injury_reserve = ir
@@ -300,7 +389,7 @@ class ManagerBot:
             assert(False), "Need to implement pruning of IR"
 
     def _save_blacklist(self):
-        fn = self._blacklist_cache_file()
+        fn = self.cache._blacklist_cache_file()
         with open(fn, "wb") as f:
             pickle.dump(self.blacklist, f)
 
@@ -326,9 +415,9 @@ class ManagerBot:
         self.pred_bldr = loader(self.lg, self.cfg)
 
     def save(self):
-        with open(self.lineup_cache_file(), "wb") as f:
+        with open(self.cache.lineup_cache_file(), "wb") as f:
             pickle.dump(self.lineup, f)
-        with open(self.bench_cache_file(), "wb") as f:
+        with open(self.cache.bench_cache_file(), "wb") as f:
             pickle.dump(self.bench, f)
         self.save_prediction_builder()
 
@@ -354,8 +443,8 @@ class ManagerBot:
     def fetch_player_pool(self):
         """Build the roster pool of players"""
         if self.ppool is None:
-            if os.path.exists(self.player_pool_cache_file()):
-                with open(self.player_pool_cache_file(), "rb") as f:
+            if os.path.exists(self.cache.player_pool_cache_file()):
+                with open(self.cache.player_pool_cache_file(), "rb") as f:
                     self.ppool = pickle.load(f)
             else:
                 all_mine = self.fetch_cur_lineup()
@@ -369,7 +458,7 @@ class ManagerBot:
                 self.ppool = self.pred_bldr.predict(
                     rcont, *self.cfg['PredictionNamedArguments'])
 
-                with open(self.player_pool_cache_file(), "wb") as f:
+                with open(self.cache.player_pool_cache_file(), "wb") as f:
                     pickle.dump(self.ppool, f)
 
     def sum_opponent(self, opp_team_key):
@@ -387,11 +476,22 @@ class ManagerBot:
         return (team_name, opp_sum)
 
     def load_lineup(self):
-        if os.path.exists(self.lineup_cache_file()):
-            with open(self.lineup_cache_file(), "rb") as f:
+        if os.path.exists(self.cache.lineup_cache_file()):
+            with open(self.cache.lineup_cache_file(), "rb") as f:
                 self.lineup = pickle.load(f)
         else:
             self.lineup = []
+            self.fill_empty_spots()
+
+    def load_bench(self):
+        if os.path.exists(self.cache.bench_cache_file()):
+            with open(self.cache.bench_cache_file(), "rb") as f:
+                self.bench = pickle.load(f)
+        else:
+            self.pick_bench()
+
+    def fill_empty_spots(self):
+        if len(self.lineup) <= self.my_team_bldr.max_players():
             stat_categories = self.lg.stat_categories()
             for pos_type in self._get_position_types():
                 stats = []
@@ -401,16 +501,10 @@ class ManagerBot:
                         stats.append(sc['display_name'])
                 self.initial_fit(stats, pos_type)
 
-    def load_bench(self):
-        if os.path.exists(self.bench_cache_file()):
-            with open(self.bench_cache_file(), "rb") as f:
-                self.bench = pickle.load(f)
-        else:
-            self.pick_bench()
-
     def initial_fit(self, categories, pos_type):
         selector = roster.PlayerSelector(self.ppool)
         selector.rank(categories)
+        ids_in_roster = [e['player_id'] for e in self.lineup]
         for plyr in selector.select():
             try:
                 if plyr['name'] in self.blacklist:
@@ -418,6 +512,8 @@ class ManagerBot:
                 if plyr['position_type'] != pos_type:
                     continue
                 if plyr['status'] != '':
+                    continue
+                if plyr['player_id'] in ids_in_roster:
                     continue
 
                 print("Player: {} Positions: {}".
@@ -445,7 +541,7 @@ class ManagerBot:
         except KeyError:
             raise KeyError("Categories are not valid: {}".format(categories))
 
-        (orig_w, orig_l, _) = self.compute_score(self.lineup, opp_sum)
+        score_comparer = ScoreComparer(self.scorer, opp_sum, self.lineup)
         for i, plyr in enumerate(selector.select()):
             if i+1 > num_iters:
                 break
@@ -460,11 +556,8 @@ class ManagerBot:
             found_better = False
             for potential_lineup in \
                     self.my_team_bldr.enumerate_fit(self.lineup, plyr):
-                (new_w, new_l, _) = self.compute_score(potential_lineup,
-                                                       opp_sum)
-                if is_new_score_better(orig_w, orig_l, new_w, new_l):
+                if score_comparer.compare_lineup(potential_lineup):
                     best_lineup = copy_roster(potential_lineup)
-                    (orig_w, orig_l) = (new_w, new_l)
                     print("  *** Found better lineup")
                     found_better = True
             self.lineup = copy_roster(best_lineup)
@@ -472,48 +565,12 @@ class ManagerBot:
                 self.pick_bench()
                 self.print_roster()
 
-    def compute_score(self, lineup, opp_sum):
-        df = pd.DataFrame(data=lineup, columns=lineup[0].index)
-        my_sum = self.scorer.summarize(df)
-        (w, l) = self.compare_scores(my_sum, opp_sum)
-        return (w, l, my_sum)
-
-    def compare_scores(self, left, right):
-        """Determine how many points comparing two summarized stats together
-
-        :param left: Summarized stats to compare
-        :type left: Series
-        :param right: Summarized stats to compare
-        :type right: Series
-        :return: Number of wins and number of losses.
-        :rtype: Tuple of two ints
-        """
-        (win, loss) = (0, 0)
-        for l, r, name in zip(left, right, left.index):
-            if self.scorer.is_counting_stat(name):
-                conv_l = int(l)
-                conv_r = int(r)
-            else:
-                conv_l = round(l, 3)
-                conv_r = round(r, 3)
-            if self.scorer.is_highest_better(name):
-                if conv_l > conv_r:
-                    win += 1
-                elif conv_r > conv_l:
-                    loss += 1
-            else:
-                if conv_l < conv_r:
-                    win += 1
-                elif conv_r < conv_l:
-                    loss += 1
-
-        return (win, loss)
-
     def show_score(self, opp_team_name, opp_sum):
         if opp_sum is None:
             print("No opponent selected")
         else:
-            (w, l, my_sum) = self.compute_score(self.lineup, opp_sum)
+            score_comparer = ScoreComparer(self.scorer, opp_sum, self.lineup)
+            (w, l, my_sum) = score_comparer.compute_score(self.lineup)
             print("Against '{}' your roster will score: {} - {}".
                   format(opp_team_name, w, l))
             print("")
@@ -653,7 +710,7 @@ class RosterChanger:
 
     def _calc_player_adds(self):
         self.adds = []
-        for plyr in self.lineup:
+        for plyr in self.lineup + self.bench:
             if plyr['player_id'] not in self.orig_roster_ids:
                 self.adds.append(plyr)
 
@@ -750,6 +807,10 @@ if __name__ == '__main__':
     if not os.path.exists(args['<cfg_file>']):
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])
+
+    if args['--erase-cache'] is not None:
+        cache = Cache(cfg)
+        cache.erase(args['--erase-cache'])
 
     bot = ManagerBot(cfg)
 
