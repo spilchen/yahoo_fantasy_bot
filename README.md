@@ -1,6 +1,6 @@
-# Yahoo! Baseball Assistant
+# Yahoo! Fantasy Bot
 
-_Python script for assisting with a Yahoo! Baseball Fantasy team_
+_A bot that can act as a manager in a Yahoo! fantasy league_
 
 ## Build status
 
@@ -15,20 +15,13 @@ cd yahoo_baseball_assistant
 virtualenv --python=python3.7 env
 source env/bin/activate
 pip install -r requirements.txt
-# You can get your key/secret from https://developer.yahoo.com/apps/create/
+# You can get your key/secret from https://developer.yahoo.com/apps/create/.  You must request read/write access.
 python examples/init_oauth_env.py -k <yahoo_consumer_key> -s <yahoo_secret_key> oauth2.json
 ```
 
-Once installed you can run the program via this command:
+You need to setup a config file to tune the program for your specific league.  Use sample_config.ini as a guide.
+
+Once installed and the config file created, you can run the program via this command:
 ```
-python examples/yba.py oauth2.json
+python ybot.py <cfg_file>
 ```
-
-## User Guide
-Once you start the program, it will list out your current as pulled from Yahoo!
-
-![Image of roster](https://github.com/spilchen/yahoo_baseball_assistant/blob/master/images/roster.png)
-
-If you press OK from this screen, it will scrape data from the internet to predict the outcome for your next week of play.  The summary of prediction will list your team along with all of other teams in the league.
-
-![Image of prediction](https://github.com/spilchen/yahoo_baseball_assistant/blob/master/images/prediction.png)
