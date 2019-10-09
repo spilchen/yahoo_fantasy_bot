@@ -9,7 +9,7 @@ Usage:
               the format.
 """
 from docopt import docopt
-from yahoo_baseball_assistant import cli
+from yahoo_fantasy_bot import cli
 import logging
 import os
 import pandas as pd
