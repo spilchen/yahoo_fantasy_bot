@@ -128,8 +128,8 @@ class PlayerPrinter:
         """
         first_goalie = True
         print("{:4}: {:20}   "
-              "{}/{}/{}/{}/{}".
-              format('B', '', 'G', 'A', 'PPP', 'SOG', 'PIM'))
+              "{:4} {}/{}/{}/{}/{}".
+              format('B', '', 'WK_G', 'G', 'A', 'PPP', 'SOG', 'PIM'))
         for pos in ['C', 'LW', 'RW', 'D', 'G']:
             for plyr in lineup:
                 if plyr['selected_position'] == pos:
@@ -137,20 +137,21 @@ class PlayerPrinter:
                         if first_goalie:
                             print("")
                             print("{:4}: {:20}   "
-                                  "{}/{}".
-                                  format('G', '', 'W', 'SV%'))
+                                  "{:4} {}/{}".
+                                  format('G', '', 'WK_G', 'W', 'SV%'))
                             first_goalie = False
 
                         print("{:4}: {:20}   "
-                              "{:.1f}/{:.3f}".
+                              "{:4} {:.1f}/{:.3f}".
                               format(plyr['selected_position'],
-                                     plyr['name'], plyr['W'], plyr['SV%']))
+                                     plyr['name'], plyr['WK_G'], plyr['W'],
+                                     plyr['SV%']))
                     else:
                         print("{:4}: {:20}   "
-                              "{:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
+                              "{:4} {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
                               format(plyr['selected_position'], plyr['name'],
-                                     plyr['G'], plyr['A'], plyr['PPP'],
-                                     plyr['SOG'], plyr['PIM']))
+                                     plyr['WK_G'], plyr['G'], plyr['A'],
+                                     plyr['PPP'], plyr['SOG'], plyr['PIM']))
         print("")
         print("Bench")
         for plyr in bench:
@@ -162,10 +163,10 @@ class PlayerPrinter:
 
     def printListPlayerHeading(self, pos):
         if pos in ['G']:
-            print("{:20}   {}/{}".format('name', 'W', 'SV%'))
+            print("{:20}   {} {}/{}".format('name', 'WK_G', 'W', 'SV%'))
         else:
-            print("{:20}   {}/{}/{}/{}/{}".format('name', 'G', 'A', 'PPP',
-                                                  'SOG', 'PIM'))
+            print("{:20}   {} {}/{}/{}/{}/{}".format('name', 'WK_G', 'G', 'A',
+                                                     'PPP', 'SOG', 'PIM'))
 
     def printPlayer(self, pos, plyr):
         if pos in ['G']:
@@ -175,9 +176,10 @@ class PlayerPrinter:
         else:
             if self._does_player_have_valid_stats(plyr, ['G', 'A', 'PPP',
                                                          'SOG', 'PIM']):
-                print("{:20}   {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
-                      format(plyr[1]['name'], plyr[1]['G'], plyr[1]['A'],
-                             plyr[1]['PPP'], plyr[1]['SOG'], plyr[1]['PIM']))
+                print("{:20}   {} {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
+                      format(plyr[1]['name'], plyr[1]['WK_G'], plyr[1]['G'],
+                             plyr[1]['A'], plyr[1]['PPP'], plyr[1]['SOG'],
+                             plyr[1]['PIM']))
 
     def _does_player_have_valid_stats(self, plyr, stats):
         for stat in stats:
@@ -212,7 +214,7 @@ class Scorer:
 
         # Handle ratio stats
         if res['SV'] > 0:
-            res['SV%'] = (res['SV'] - res['GA']) / res['SV']
+            res['SV%'] = res['SV'] / (res['SV'] + res['GA'])
         else:
             res['SV%'] = None
 

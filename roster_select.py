@@ -19,6 +19,7 @@ from yahoo_baseball_assistant import roster
 import logging
 import pickle
 import os
+import math
 import pandas as pd
 import numpy as np
 import configparser
@@ -77,6 +78,7 @@ def manual_select_players(opp_team_name, opp_sum, bot):
 
     bot.print_roster()
     bot.show_score(opp_team_name, opp_sum)
+    score_comparer = ScoreComparer(bot.scorer, opp_sum, bot.lineup)
     print("Enter the name of the player to remove: ")
     pname_rem = input().rstrip()
     print("Enter the name of the player to add: ")
@@ -90,6 +92,8 @@ def manual_select_players(opp_team_name, opp_sum, bot):
 
     bot.print_roster()
     bot.show_score(opp_team_name, opp_sum)
+    improved = score_comparer.compare_lineup(bot.lineup)
+    print("This lineup has {}".format("improved" if improved else "declined"))
 
 
 def auto_select_players(opp_sum):
@@ -245,12 +249,13 @@ class ScoreComparer:
     def __init__(self, scorer, opp_sum, lineup):
         self.scorer = scorer
         self.opp_sum = opp_sum
-        (self.orig_w, self.orig_l, _) = self.compute_score(lineup)
+        (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
+            self.compute_score(lineup)
 
     def compare_lineup(self, potential_lineup):
         better_lineup = False
-        (new_w, new_l, _) = self.compute_score(potential_lineup)
-        if self._is_new_score_better(new_w, new_l):
+        (new_w, new_l, _, new_cat_comp) = self.compute_score(potential_lineup)
+        if self._is_new_score_better(new_w, new_l, new_cat_comp):
             self.orig_w = new_w
             self.orig_l = new_l
             better_lineup = True
@@ -259,10 +264,10 @@ class ScoreComparer:
     def compute_score(self, lineup):
         df = pd.DataFrame(data=lineup, columns=lineup[0].index)
         my_sum = self.scorer.summarize(df)
-        (w, l) = self._compare_scores(my_sum, self.opp_sum)
-        return (w, l, my_sum)
+        (w, l, cat_comp) = self._compare_scores(my_sum, self.opp_sum)
+        return (w, l, my_sum, cat_comp)
 
-    def _is_new_score_better(self, new_w, new_l):
+    def _is_new_score_better(self, new_w, new_l, new_cat_comp):
         if self.orig_w + self.orig_l > 0:
             orig_pct = self.orig_w / (self.orig_w + self.orig_l)
         else:
@@ -273,7 +278,24 @@ class ScoreComparer:
         else:
             new_pct = 0.5
 
-        return orig_pct < new_pct
+        # Look for marginal improvements in categories we are tied or losing
+        if math.isclose(orig_pct, new_pct):
+            stat_improvement = 0.0
+            for stat in new_cat_comp.keys():
+                o_comp = self.orig_cat_comp[stat]
+                n_comp = new_cat_comp[stat]
+                if o_comp["outcome"] in ['L', 'T'] and \
+                        n_comp["outcome"] == o_comp["outcome"]:
+                    if math.isclose(o_comp["left"], n_comp["left"]):
+                        pass
+                    else:
+                        stat_factor = 1 if self.scorer.is_highest_better(stat)\
+                            else -1
+                        stat_improvement += (n_comp["left"] - o_comp["left"]) \
+                            / o_comp["left"] * stat_factor
+            return stat_improvement > 0
+        else:
+            return orig_pct < new_pct
 
     def _compare_scores(self, left, right):
         """Determine how many points comparing two summarized stats together
@@ -282,9 +304,10 @@ class ScoreComparer:
         :type left: Series
         :param right: Summarized stats to compare
         :type right: Series
-        :return: Number of wins and number of losses.
-        :rtype: Tuple of two ints
+        :return: Number of wins, number of losses and a category comparison
+        :rtype: Tuple of two ints and a dict
         """
+        category_compare = {}
         (win, loss) = (0, 0)
         for l, r, name in zip(left, right, left.index):
             if self.scorer.is_counting_stat(name):
@@ -293,18 +316,25 @@ class ScoreComparer:
             else:
                 conv_l = round(l, 3)
                 conv_r = round(r, 3)
+            outcome = 'T'
             if self.scorer.is_highest_better(name):
                 if conv_l > conv_r:
-                    win += 1
+                    outcome = 'W'
                 elif conv_r > conv_l:
-                    loss += 1
+                    outcome = 'L'
             else:
                 if conv_l < conv_r:
-                    win += 1
+                    outcome = 'W'
                 elif conv_r < conv_l:
-                    loss += 1
+                    outcome = 'L'
+            if outcome == 'W':
+                win += 1
+            elif outcome == 'L':
+                loss += 1
+            category_compare[name] = {"left": l, "right": r,
+                                      "outcome": outcome}
 
-        return (win, loss)
+        return (win, loss, category_compare)
 
 
 class ManagerBot:
@@ -570,7 +600,7 @@ class ManagerBot:
             print("No opponent selected")
         else:
             score_comparer = ScoreComparer(self.scorer, opp_sum, self.lineup)
-            (w, l, my_sum) = score_comparer.compute_score(self.lineup)
+            (w, l, my_sum, _) = score_comparer.compute_score(self.lineup)
             print("Against '{}' your roster will score: {} - {}".
                   format(opp_team_name, w, l))
             print("")
