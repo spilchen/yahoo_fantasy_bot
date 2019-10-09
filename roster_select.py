@@ -32,170 +32,7 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(module)s - %(funcName)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-logger = logging.getLogger()
 pd.options.mode.chained_assignment = None  # default='warn'
-
-
-def print_main_menu():
-    print("")
-    print("")
-    print("Main Menu")
-    print("=========")
-    print("P - Pick opponent")
-    print("R - Show roster")
-    print("S - Show sumarized scores")
-    print("A - Auto select players")
-    print("M - Manual select players")
-    print("T - Show two start pitchers")
-    print("L - List players")
-    print("B - Blacklist players")
-    print("Y - Apply roster moves")
-    print("X - Exit")
-    print("")
-    print("Pick a selection:")
-
-
-def copy_roster(roster):
-    new_roster = []
-    for plyr in roster:
-        new_roster.append(plyr.copy())
-    return new_roster
-
-
-def show_two_start_pitchers(bot):
-    if "WK_GS" in bot.ppool.columns:
-        two_starters = bot.ppool[bot.ppool.WK_GS > 1]
-        for plyr in two_starters.iterrows():
-            print(plyr[1]['name'])
-    else:
-        print("WK_GS is not a category in the player pool")
-
-
-def manual_select_players(opp_team_name, opp_sum, bot):
-    if opp_sum is None:
-        print("Must pick an opponent")
-        return
-
-    bot.print_roster()
-    bot.show_score(opp_team_name, opp_sum)
-    score_comparer = ScoreComparer(bot.scorer, opp_sum, bot.lineup)
-    print("Enter the name of the player to remove: ")
-    pname_rem = input().rstrip()
-    print("Enter the name of the player to add: ")
-    pname_add = input().rstrip()
-
-    try:
-        bot.swap_player(pname_rem, pname_add)
-    except (LookupError, ValueError) as e:
-        print(e)
-        return
-
-    bot.print_roster()
-    bot.show_score(opp_team_name, opp_sum)
-    improved = score_comparer.compare_lineup(bot.lineup)
-    print("This lineup has {}".format("improved" if improved else "declined"))
-
-
-def auto_select_players(opp_sum):
-    if opp_sum is None:
-        print("Must pick an opponent")
-        return
-
-    print("")
-    print("Number of iterations: ")
-    try:
-        num_iters = int(input())
-    except ValueError:
-        print("*** input a valid number")
-        return
-    print("Stat categories to rank (delimited with comma):")
-    categories_combined = input()
-    categories = categories_combined.rstrip().split(",")
-    print(categories)
-
-    try:
-        bot.auto_select_players(opp_sum, num_iters, categories)
-    except KeyError as e:
-        print(e)
-        return
-
-
-def print_blacklist_menu():
-    print("")
-    print("Blacklist Menu")
-    print("==============")
-    print("L - List players on black list")
-    print("A - Add player to black list")
-    print("D - Delete player from black list")
-    print("X - Exit and return to previous menu")
-    print("")
-    print("Pick a selection: ")
-
-
-def manage_blacklist(bot):
-    while True:
-        print_blacklist_menu()
-        sel = input()
-
-        if sel == "L":
-            print("Contents of blacklist:")
-            for p in bot.get_blacklist():
-                print(p)
-        elif sel == "A":
-            print("Enter player name to add: ")
-            name = input()
-            bot.add_to_blacklist(name)
-        elif sel == "D":
-            print("Enter player name to delete: ")
-            name = input()
-            if not bot.remove_from_blacklist(name):
-                print("Name not found in black list: {}".format(name))
-        elif sel == "X":
-            break
-        else:
-            print("Unknown option: {}".format(sel))
-
-
-def list_players(bot):
-    print("Enter position: ")
-    pos = input()
-    print("")
-    bot.list_players(pos)
-
-
-def list_teams(lg):
-    for team in lg.teams():
-        print("{:30} {:15}".format(team['name'], team['team_key']))
-
-
-def get_team_name(lg, team_key):
-    for team in lg.teams():
-        if team['team_key'] == team_key:
-            return team['name']
-    raise LookupError("Could not find team for team key: {}".format(team_key))
-
-
-def pick_opponent(bot):
-    print("")
-    print("Available teams")
-    list_teams(bot.lg)
-    print("")
-    print("Enter team key of new opponent (or X to quit): ")
-    opp_team_key = input()
-
-    if opp_team_key == 'X':
-        return (None, None)
-    else:
-        return bot.sum_opponent(opp_team_key)
-
-
-def apply_roster_moves(bot):
-    bot.apply_roster_moves(dry_run=True)
-    print("")
-    print("Type 'yes' to apply the roster moves:")
-    proceed = input()
-    if proceed == 'yes':
-        bot.apply_roster_moves(dry_run=False)
 
 
 class Cache:
@@ -341,10 +178,12 @@ class ManagerBot:
     """A class that encapsulates an automated Yahoo! fantasy manager.
     """
     def __init__(self, cfg):
+        self.logger = logging.getLogger()
         self.cfg = cfg
         self.cache = Cache(self.cfg)
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
         self.lg = yfa.League(self.sc, cfg['League']['id'])
+        self.tm = self.lg.to_team(self.lg.team_key())
         self.pred_bldr = None
         self.my_team_bldr = self._construct_roster_builder()
         self.ppool = None
@@ -356,12 +195,15 @@ class ManagerBot:
         self.lineup = None
         self.bench = []
         self.injury_reserve = []
+        self.opp_sum = None
+        self.opp_team_name = None
 
         self.init_prediction_builder()
         self.fetch_player_pool()
         self.load_lineup()
         self.load_bench()
         self.pick_injury_reserve()
+        self.auto_pick_opponent()
 
     def _load_blacklist(self):
         fn = self.cache.blacklist_cache_file()
@@ -478,10 +320,11 @@ class ManagerBot:
                     self.ppool = pickle.load(f)
             else:
                 all_mine = self.fetch_cur_lineup()
-                logger.info("Fetching free agents")
+                self.logger.info("Fetching free agents")
                 plyr_pool = self.lg.free_agents(None) + all_mine
-                logger.info("Free agents fetch complete.  {} players in pool"
-                            .format(len(plyr_pool)))
+                self.logger.info(
+                    "Free agents fetch complete.  {} players in pool".
+                    format(len(plyr_pool)))
 
                 rcont = roster.Container(None, None)
                 rcont.add_players(plyr_pool)
@@ -494,7 +337,7 @@ class ManagerBot:
     def sum_opponent(self, opp_team_key):
         # Build up the predicted score of the opponent
         try:
-            team_name = get_team_name(self.lg, opp_team_key)
+            team_name = self._get_team_name(self.lg, opp_team_key)
         except LookupError:
             print("Not a valid team: {}:".format(opp_team_key))
             return(None, None)
@@ -559,7 +402,7 @@ class ManagerBot:
     def print_roster(self):
         self.display.printRoster(self.lineup, self.bench, self.injury_reserve)
 
-    def auto_select_players(self, opp_sum, num_iters, categories):
+    def auto_select_players(self, num_iters, categories):
         # Filter out any players from the lineup as we don't want to consider
         # them again.
         indexColumn = self.cfg['Prediction']['indexColumn']
@@ -571,7 +414,7 @@ class ManagerBot:
         except KeyError:
             raise KeyError("Categories are not valid: {}".format(categories))
 
-        score_comparer = ScoreComparer(self.scorer, opp_sum, self.lineup)
+        score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
         for i, plyr in enumerate(selector.select()):
             if i+1 > num_iters:
                 break
@@ -582,45 +425,45 @@ class ManagerBot:
                   format(plyr['name'], plyr['eligible_positions']))
 
             plyr['selected_position'] = np.nan
-            best_lineup = copy_roster(self.lineup)
+            best_lineup = self._copy_roster(self.lineup)
             found_better = False
             for potential_lineup in \
                     self.my_team_bldr.enumerate_fit(self.lineup, plyr):
                 if score_comparer.compare_lineup(potential_lineup):
-                    best_lineup = copy_roster(potential_lineup)
+                    best_lineup = self._copy_roster(potential_lineup)
                     print("  *** Found better lineup")
                     found_better = True
-            self.lineup = copy_roster(best_lineup)
+            self.lineup = self._copy_roster(best_lineup)
             if found_better:
                 self.pick_bench()
                 self.print_roster()
 
-    def show_score(self, opp_team_name, opp_sum):
-        if opp_sum is None:
-            print("No opponent selected")
-        else:
-            score_comparer = ScoreComparer(self.scorer, opp_sum, self.lineup)
-            (w, l, my_sum, _) = score_comparer.compute_score(self.lineup)
-            print("Against '{}' your roster will score: {} - {}".
-                  format(opp_team_name, w, l))
-            print("")
-            for stat in my_sum.index:
-                if stat in ["ERA", "WHIP"]:
-                    if my_sum[stat] < opp_sum[stat]:
-                        my_win = "*"
-                        opp_win = ""
-                    else:
-                        my_win = ""
-                        opp_win = "*"
+    def show_score(self):
+        if self.opp_sum is None:
+            raise RuntimeError("No opponent selected")
+
+        score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
+        (w, l, my_sum, _) = score_comparer.compute_score(self.lineup)
+        print("Against '{}' your roster will score: {} - {}".
+              format(self.opp_team_name, w, l))
+        print("")
+        for stat in my_sum.index:
+            if stat in ["ERA", "WHIP"]:
+                if my_sum[stat] < self.opp_sum[stat]:
+                    my_win = "*"
+                    opp_win = ""
                 else:
-                    if my_sum[stat] > opp_sum[stat]:
-                        my_win = "*"
-                        opp_win = ""
-                    else:
-                        my_win = ""
-                        opp_win = "*"
-                print("{:5} {:2.3f} {:1} v.s. {:2.3f} {:2}".format(
-                    stat, my_sum[stat], my_win, opp_sum[stat], opp_win))
+                    my_win = ""
+                    opp_win = "*"
+            else:
+                if my_sum[stat] > self.opp_sum[stat]:
+                    my_win = "*"
+                    opp_win = ""
+                else:
+                    my_win = ""
+                    opp_win = "*"
+            print("{:5} {:2.3f} {:1} v.s. {:2.3f} {:2}".format(
+                stat, my_sum[stat], my_win, self.opp_sum[stat], opp_win))
 
     def list_players(self, pos):
         self.display.printListPlayerHeading(pos)
@@ -669,6 +512,37 @@ class ManagerBot:
                                    self.lineup, self.bench,
                                    self.injury_reserve)
         roster_chg.apply()
+
+    def pick_opponent(self, opp_team_key):
+        (self.opp_team_name, self.opp_sum) = self.sum_opponent(opp_team_key)
+
+    def auto_pick_opponent(self):
+        edit_wk = self.lg.current_week()
+        (wk_start, wk_end) = self.lg.week_date_range(edit_wk)
+        edit_date = self.lg.edit_date()
+        if edit_date > wk_end:
+            edit_wk += 1
+
+        try:
+            opp_team_key = self.tm.matchup(edit_wk)
+        except RuntimeError:
+            print("Could not find opponent.  Picking ourselves...")
+            opp_team_key = self.lg.team_key()
+
+        self.pick_opponent(opp_team_key)
+
+    def _copy_roster(self, roster):
+        new_roster = []
+        for plyr in roster:
+            new_roster.append(plyr.copy())
+        return new_roster
+
+    def _get_team_name(self, lg, team_key):
+        for team in lg.teams():
+            if team['team_key'] == team_key:
+                return team['name']
+        raise LookupError("Could not find team for team key: {}".format(
+            team_key))
 
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
@@ -821,6 +695,174 @@ class RosterChanger:
             self.tm.change_positions(self.lg.edit_date(), pos_change)
 
 
+class CLIDriver:
+    """
+    Driver for the CLI program.  Displays menus and prompts for actions.
+
+    :param cfg: ConfigParser read in
+    """
+    def __init__(self, cfg):
+        self.bot = ManagerBot(cfg)
+
+    def run(self):
+        menu_opts = {"P": self._pick_opponent,
+                     "R": self._print_roster,
+                     "S": self._show_score,
+                     "A": self._auto_select_players,
+                     "M": self._manual_select_players,
+                     "T": self._show_two_start_pitchers,
+                     "L": self._list_players,
+                     "B": self._manage_blacklist,
+                     "Y": self._apply_roster_moves}
+
+        while True:
+            self._print_main_menu()
+            opt = input().upper()
+
+            if opt in menu_opts:
+                menu_opts[opt]()
+            elif opt == "X":
+                break
+            else:
+                print("Unknown option: {}".format(opt))
+        self.bot.save()
+
+    def _print_main_menu(self):
+        print("")
+        print("")
+        print("Main Menu")
+        print("=========")
+        print("P - Pick opponent")
+        print("R - Show roster")
+        print("S - Show sumarized scores")
+        print("A - Auto select players")
+        print("M - Manual select players")
+        print("T - Show two start pitchers")
+        print("L - List players")
+        print("B - Blacklist players")
+        print("Y - Apply roster moves")
+        print("X - Exit")
+        print("")
+        print("Pick a selection:")
+
+    def _pick_opponent(self):
+        print("")
+        print("Available teams")
+        self._list_teams(self.bot.lg)
+        print("")
+        print("Enter team key of new opponent (or X to quit): ")
+        opp_team_key = input()
+
+        if opp_team_key != 'X':
+            self.bot.pick_opponent(opp_team_key)
+
+    def _list_teams(self, lg):
+        for team in lg.teams():
+            print("{:30} {:15}".format(team['name'], team['team_key']))
+
+    def _apply_roster_moves(self):
+        self.bot.apply_roster_moves(dry_run=True)
+        print("")
+        print("Type 'yes' to apply the roster moves:")
+        proceed = input()
+        if proceed == 'yes':
+            self.bot.apply_roster_moves(dry_run=False)
+
+    def _print_roster(self):
+        self.bot.print_roster()
+
+    def _show_score(self):
+        self.bot.show_score()
+
+    def _auto_select_players(self):
+        print("")
+        print("Number of iterations: ")
+        try:
+            num_iters = int(input())
+        except ValueError:
+            print("*** input a valid number")
+            return
+        print("Stat categories to rank (delimited with comma):")
+        categories_combined = input()
+        categories = categories_combined.rstrip().split(",")
+        print(categories)
+
+        try:
+            self.bot.auto_select_players(num_iters, categories)
+        except KeyError as e:
+            print(e)
+
+    def _manual_select_players(self):
+        self.bot.print_roster()
+        self.bot.show_score()
+        score_comparer = ScoreComparer(self.bot.scorer, self.bot.opp_sum,
+                                       self.bot.lineup)
+        print("Enter the name of the player to remove: ")
+        pname_rem = input().rstrip()
+        print("Enter the name of the player to add: ")
+        pname_add = input().rstrip()
+
+        try:
+            self.bot.swap_player(pname_rem, pname_add)
+        except (LookupError, ValueError) as e:
+            print(e)
+            return
+
+        self.bot.print_roster()
+        self.bot.show_score()
+        improved = score_comparer.compare_lineup(self.bot.lineup)
+        print("This lineup has {}".format("improved" if improved
+                                          else "declined"))
+
+    def _show_two_start_pitchers(self):
+        if "WK_GS" in self.bot.ppool.columns:
+            two_starters = self.bot.ppool[self.bot.ppool.WK_GS > 1]
+            for plyr in two_starters.iterrows():
+                print(plyr[1]['name'])
+        else:
+            print("WK_GS is not a category in the player pool")
+
+    def _list_players(self):
+        print("Enter position: ")
+        pos = input()
+        print("")
+        self.bot.list_players(pos)
+
+    def _manage_blacklist(self):
+        while True:
+            self._print_blacklist_menu()
+            sel = input()
+
+            if sel == "L":
+                print("Contents of blacklist:")
+                for p in self.bot.get_blacklist():
+                    print(p)
+            elif sel == "A":
+                print("Enter player name to add: ")
+                name = input()
+                self.bot.add_to_blacklist(name)
+            elif sel == "D":
+                print("Enter player name to delete: ")
+                name = input()
+                if not self.bot.remove_from_blacklist(name):
+                    print("Name not found in black list: {}".format(name))
+            elif sel == "X":
+                break
+            else:
+                print("Unknown option: {}".format(sel))
+
+    def _print_blacklist_menu(self):
+        print("")
+        print("Blacklist Menu")
+        print("==============")
+        print("L - List players on black list")
+        print("A - Add player to black list")
+        print("D - Delete player from black list")
+        print("X - Exit and return to previous menu")
+        print("")
+        print("Pick a selection: ")
+
+
 if __name__ == '__main__':
     args = docopt(__doc__, version='1.0')
 
@@ -842,46 +884,5 @@ if __name__ == '__main__':
         cache = Cache(cfg)
         cache.erase(args['--erase-cache'])
 
-    bot = ManagerBot(cfg)
-
-    # Opponent vars aren't populated until we pick an opponent
-    opp_team_name = None
-    opp_sum = None
-
-    while True:
-        print_main_menu()
-        opt = input()
-
-        if opt == "P":
-            (opp_team_name, opp_sum) = pick_opponent(bot)
-        elif opt == "R":
-            bot.print_roster()
-        elif opt == "S":
-            if opp_sum is None:
-                print("No opponent selected")
-            else:
-                bot.show_score(opp_team_name, opp_sum)
-        elif opt == "A":
-            if opp_sum is None:
-                print("No opponent selected")
-            else:
-                auto_select_players(opp_sum)
-        elif opt == "M":
-            if opp_sum is None:
-                print("No opponent selected")
-            else:
-                manual_select_players(opp_team_name, opp_sum, bot)
-        elif opt == "T":
-            show_two_start_pitchers(bot)
-        elif opt == "L":
-            list_players(bot)
-        elif opt == "B":
-            manage_blacklist(bot)
-        elif opt == "Y":
-            apply_roster_moves(bot)
-        elif opt == "X":
-            break
-        else:
-            print("Unknown option: {}".format(opt))
-
-    bot.save()
+    cli = CLIDriver(cfg)
+    cli.run()
