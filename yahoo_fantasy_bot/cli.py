@@ -1,6 +1,6 @@
 #!/bin/python
 
-from yahoo_baseball_assistant import bot
+from yahoo_fantasy_bot import bot
 
 
 class Driver:

@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
-from yahoo_baseball_assistant import utils
-import pandas as pd
+from yahoo_fantasy_bot import utils
 import numpy as np
 
 

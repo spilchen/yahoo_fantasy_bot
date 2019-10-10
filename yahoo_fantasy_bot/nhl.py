@@ -7,7 +7,7 @@ import logging
 import pickle
 import os
 import datetime
-from yahoo_baseball_assistant import utils
+from yahoo_fantasy_bot import utils
 
 
 logger = logging.getLogger()

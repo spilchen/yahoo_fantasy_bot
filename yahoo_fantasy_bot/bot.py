@@ -2,57 +2,43 @@
 
 from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
-from yahoo_baseball_assistant import roster
+from yahoo_fantasy_bot import roster
 import logging
 import pickle
 import os
 import math
+import datetime
 import pandas as pd
 import numpy as np
 import importlib
 
 
 class Cache:
-    def __init__(self, cfg):
+    def __init__(self, cfg, team_key):
         self.cfg = cfg
+        self.team_key = team_key
 
-    def cache_dir(self):
+        if not os.path.exists(self.cache_team_dir()):
+            os.makedirs(self.cache_team_dir())
+
+    def cache_root_dir(self):
         dir = self.cfg['Cache']['dir']
-        if not os.path.isdir(dir):
-            os.mkdir(dir)
         return dir
 
+    def cache_team_dir(self):
+        return "{}/{}".format(self.cache_root_dir(), self.team_key)
+
     def lineup_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/lineup.pkl".format(dir)
+        return "{}/lineup.pkl".format(self.cache_team_dir())
 
     def bench_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/bench.pkl".format(dir)
+        return "{}/bench.pkl".format(self.cache_team_dir())
 
-    def player_pool_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/ppool.pkl".format(dir)
+    def free_agents_cache_file(self):
+        return "{}/free_agents.pkl".format(self.cache_root_dir())
 
     def blacklist_cache_file(self):
-        dir = self.cache_dir()
-        return "{}/blacklist.pkl".format(dir)
-
-    def erase(self, levels):
-        if "all" in levels:
-            levels = "ppool,lineup,builder,bench"
-        for lvl in levels.split(','):
-            try:
-                if lvl == 'ppool':
-                    os.remove(self.player_pool_cache_file())
-                elif lvl == 'lineup':
-                    os.remove(self.lineup_cache_file())
-                elif lvl == 'builder':
-                    os.remove("{}/Builder.pkl".format(self.dir))
-                elif lvl == 'bench':
-                    os.remove(self.bench_cache_file())
-            except OSError:
-                pass
+        return "{}/blacklist.pkl".format(self.cache_team_dir())
 
 
 class ScoreComparer:
@@ -157,10 +143,10 @@ class ManagerBot:
     def __init__(self, cfg):
         self.logger = logging.getLogger()
         self.cfg = cfg
-        self.cache = Cache(self.cfg)
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
         self.lg = yfa.League(self.sc, cfg['League']['id'])
         self.tm = self.lg.to_team(self.lg.team_key())
+        self.cache = Cache(self.cfg, self.lg.team_key())
         self.pred_bldr = None
         self.my_team_bldr = self._construct_roster_builder()
         self.ppool = None
@@ -292,24 +278,47 @@ class ManagerBot:
     def fetch_player_pool(self):
         """Build the roster pool of players"""
         if self.ppool is None:
-            if os.path.exists(self.cache.player_pool_cache_file()):
-                with open(self.cache.player_pool_cache_file(), "rb") as f:
-                    self.ppool = pickle.load(f)
-            else:
-                all_mine = self.fetch_cur_lineup()
-                self.logger.info("Fetching free agents")
-                plyr_pool = self.lg.free_agents(None) + all_mine
-                self.logger.info(
-                    "Free agents fetch complete.  {} players in pool".
-                    format(len(plyr_pool)))
+            plyr_pool = self.fetch_free_agents() + self.fetch_cur_lineup()
+            rcont = roster.Container(None, None)
+            rcont.add_players(plyr_pool)
+            self.ppool = self.pred_bldr.predict(
+                rcont, *self.cfg['PredictionNamedArguments'])
 
-                rcont = roster.Container(None, None)
-                rcont.add_players(plyr_pool)
-                self.ppool = self.pred_bldr.predict(
-                    rcont, *self.cfg['PredictionNamedArguments'])
+    def fetch_free_agents(self):
+        free_agents = None
 
-                with open(self.cache.player_pool_cache_file(), "wb") as f:
-                    pickle.dump(self.ppool, f)
+        if os.path.exists(self.cache.free_agents_cache_file()):
+            with open(self.cache.free_agents_cache_file(), "rb") as f:
+                free_agents = pickle.load(f)
+            if datetime.datetime.now() > free_agents["expiry"]:
+                free_agents = None
+
+        if free_agents is None:
+            self.logger.info("Fetching free agents")
+            free_agents = {}
+            free_agents["players"] = self.lg.free_agents(None)
+            free_agents["expiry"] = datetime.datetime.now() + \
+                datetime.timedelta(minutes=30)
+            self.logger.info(
+                "Free agents fetch complete.  {} players in pool".
+                format(len(free_agents["players"])))
+
+            with open(self.cache.free_agents_cache_file(), "wb") as f:
+                pickle.dump(free_agents, f)
+
+        return free_agents["players"]
+
+    def invalidate_free_agents(self, plyrs):
+        if os.path.exists(self.cache.free_agents_cache_file()):
+            with open(self.cache.free_agents_cache_file(), "rb") as f:
+                free_agents = pickle.load(f)
+
+            plyr_ids = [e["player_id"] for e in plyrs]
+            self.logger.info("Removing player IDs from free agent cache".
+                             format(plyr_ids))
+            free_agents = free_agents[~free_agents.player_id.isin(plyr_ids)]
+            with open(self.cache.free_agents_cache_file(), "wb") as f:
+                pickle.dump(free_agents, f)
 
     def sum_opponent(self, opp_team_key):
         # Build up the predicted score of the opponent
@@ -490,6 +499,11 @@ class ManagerBot:
                                    self.injury_reserve)
         roster_chg.apply()
 
+        # Change the free agent cache to remove the players we added
+        if not dry_run:
+            adds = roster.get_adds_completed()
+            self.invalidate_free_agents(adds)
+
     def pick_opponent(self, opp_team_key):
         (self.opp_team_name, self.opp_sum) = self.sum_opponent(opp_team_key)
 
@@ -575,6 +589,7 @@ class RosterChanger:
             [e['player_id'] for e in injury_reserve]
         self.adds = []
         self.drops = []
+        self.adds_completed = []
 
     def apply(self):
         self._calc_player_drops()
@@ -582,6 +597,9 @@ class RosterChanger:
         self._apply_ir_moves()
         self._apply_player_adds_and_drops()
         self._apply_position_selector()
+
+    def get_adds_completed(self):
+        return self.adds_completed
 
     def _calc_player_drops(self):
         self.drops = []
@@ -604,11 +622,13 @@ class RosterChanger:
                     self.tm.drop_player(plyr['player_id'])
             else:
                 plyr = self.adds.pop()
+                self.adds_completed.append(plyr)
                 print("Add " + plyr['name'])
                 if not self.dry_run:
                     self.tm.add_player(plyr['player_id'])
 
         for add_plyr, drop_plyr in zip(self.adds, self.drops):
+            self.adds_completed.append(add_plyr)
             print("Add {} and drop {}".format(add_plyr['name'],
                                               drop_plyr['name']))
             if not self.dry_run:

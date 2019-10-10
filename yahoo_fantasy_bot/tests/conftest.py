@@ -3,7 +3,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from yahoo_baseball_assistant import roster
+from yahoo_fantasy_bot import roster
 
 RBLDR_COLS = ["name", "eligible_positions", "selected_position"]
 RSEL_COLS = ["name", "HR", "OBP", "W", "ERA"]

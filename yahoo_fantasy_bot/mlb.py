@@ -2,7 +2,7 @@
 
 from baseball_scraper import baseball_reference, espn, fangraphs
 from baseball_id import Lookup
-from yahoo_baseball_assistant import utils
+from yahoo_fantasy_bot import utils
 import pandas as pd
 import numpy as np
 import datetime
