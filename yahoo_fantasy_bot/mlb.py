@@ -8,12 +8,11 @@ import numpy as np
 import datetime
 import logging
 import pickle
+import os
 
 
 logger = logging.getLogger()
 
-
-# SPILLY - rename this module to be baseball.py
 
 class Builder:
     """Class that constructs prediction datasets for hitters and pitchers.
@@ -256,23 +255,24 @@ def init_scrapers():
 
 
 def init_prediction_builder(lg, cfg):
-    (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
-    pred_bldr = utils.pickle_if_recent("Builder.pkl")
-    if pred_bldr is not None:
-        pred_bldr.save_on_exit = False
-        return pred_bldr
-    (fg, ts, tss) = init_scrapers()
-    es = espn.ProbableStartersScraper(start_date, end_date)
-    pred_bldr = Builder(lg, fg, ts, es, tss)
-    pred_bldr.save_on_exit = True
+    pred_bldr = None
+    cache = utils.LeagueCache(cfg)
+    fn = cache.prediction_builder_cache_file()
+    if os.path.exists(fn):
+        with open(fn, "rb") as f:
+            pred_bldr = pickle.load(f)
+        if datetime.datetime.now() > pred_bldr.expiry:
+            pred_bldr = None
+
+    if pred_bldr is None:
+        (fg, ts, tss) = init_scrapers()
+        (start_date, end_date) = lg.week_date_range(lg.current_week() + 1)
+        es = espn.ProbableStartersScraper(start_date, end_date)
+        pred_bldr = Builder(lg, fg, ts, es, tss)
+        pred_bldr.expiry = datetime.datetime.now() + datetime.timedelta(
+            minutes=int(cfg['Cache']['predictionBuilderExpiry']))
+
     return pred_bldr
-
-
-def save_prediction_builder(pred_bldr, cfg):
-    if pred_bldr.save_on_exit:
-        fn = "Builder.pkl"
-        with open(fn, "wb") as f:
-            pickle.dump(pred_bldr, f)
 
 
 class GenericCsvScraper:

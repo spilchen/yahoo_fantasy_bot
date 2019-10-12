@@ -2,8 +2,6 @@
 
 import unicodedata
 import os
-import pickle
-import time
 
 
 def normalized(name):
@@ -18,15 +16,30 @@ def normalized(name):
         'ascii', 'ignore').decode('utf-8')
 
 
-def pickle_if_recent(fn):
-    if os.path.exists(fn):
-        mtime = os.path.getmtime(fn)
-        cur_time = int(time.time())
-        sec_per_day = 24 * 60 * 60
-        if cur_time - mtime <= sec_per_day:
-            with open(fn, 'rb') as f:
-                obj = pickle.load(f)
-                # Don't save this to file on exit.
-                obj.save_on_exit = False
-                return obj
-    return None
+class TeamCache:
+    def __init__(self, cfg, team_key):
+        self.cache_dir = "{}/{}".format(cfg['Cache']['dir'], team_key)
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
+    def lineup_cache_file(self):
+        return "{}/lineup.pkl".format(self.cache_dir)
+
+    def bench_cache_file(self):
+        return "{}/bench.pkl".format(self.cache_dir)
+
+    def blacklist_cache_file(self):
+        return "{}/blacklist.pkl".format(self.cache_dir)
+
+
+class LeagueCache:
+    def __init__(self, cfg):
+        self.cache_dir = cfg['Cache']['dir']
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
+    def free_agents_cache_file(self):
+        return "{}/free_agents.pkl".format(self.cache_dir)
+
+    def prediction_builder_cache_file(self):
+        return "{}/pred_builder.pkl".format(self.cache_dir)

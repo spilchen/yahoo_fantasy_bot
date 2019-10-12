@@ -1,13 +1,13 @@
 from setuptools import setup
 
-setup(name='yahoo_baseball_assistant',
+setup(name='yahoo_fantasy_bot',
       version='0.0.1',
-      description='Helpers to aid machine learning in Yahoo! fantasy baseball',
-      url='http://github.com/spilchen/yahoo_baseball_assistant',
+      description='A bot that can act as a manager in a Yahoo! fantasy league',
+      url='http://github.com/spilchen/yahoo_fantasy_bot',
       author='Matt Spilchen',
       author_email='matt.spilchen@gmail.com',
       license='MIT',
-      packages=['yahoo_baseball_assistant'],
+      packages=['yahoo_fantasy_bot'],
       setup_requires=["pytest-runner"],
       tests_require=["pytest"],
       classifiers=[

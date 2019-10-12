@@ -91,23 +91,21 @@ class Builder:
 
 
 def init_prediction_builder(lg, cfg):
-    fn = "{}/Builder.pkl".format(cfg['Cache']['dir'])
-    bldr = utils.pickle_if_recent(fn)
-    if bldr is not None:
-        return bldr
-    bldr = Builder(lg, "espn.skaters.proj.csv", "espn.goalies.proj.csv")
-    bldr.save_on_exit = True
+    bldr = None
+    cache = utils.LeagueCache(cfg)
+    fn = cache.prediction_builder_cache_file()
+    if os.path.exists(fn):
+        with open(fn, "rb") as f:
+            bldr = pickle.load(f)
+        if datetime.datetime.now() > bldr.expiry:
+            bldr = None
+
+    if bldr is None:
+        bldr = Builder(lg, "espn.skaters.proj.csv", "espn.goalies.proj.csv")
+        bldr.expiry = datetime.datetime.now() + datetime.timedelta(
+            minutes=int(cfg['Cache']['predictionBuilderExpiry']))
+
     return bldr
-
-
-def save_prediction_builder(pred_bldr, cfg):
-    if pred_bldr.save_on_exit:
-        dir = cfg['Cache']['dir']
-        if not os.path.exists(dir):
-            os.mkdir(dir)
-        fn = "{}/Builder.pkl".format(dir)
-        with open(fn, "wb") as f:
-            pickle.dump(pred_bldr, f)
 
 
 class PlayerPrinter:

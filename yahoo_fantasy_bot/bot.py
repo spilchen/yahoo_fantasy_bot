@@ -2,7 +2,7 @@
 
 from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
-from yahoo_fantasy_bot import roster
+from yahoo_fantasy_bot import roster, utils
 import logging
 import pickle
 import os
@@ -11,34 +11,6 @@ import datetime
 import pandas as pd
 import numpy as np
 import importlib
-
-
-class Cache:
-    def __init__(self, cfg, team_key):
-        self.cfg = cfg
-        self.team_key = team_key
-
-        if not os.path.exists(self.cache_team_dir()):
-            os.makedirs(self.cache_team_dir())
-
-    def cache_root_dir(self):
-        dir = self.cfg['Cache']['dir']
-        return dir
-
-    def cache_team_dir(self):
-        return "{}/{}".format(self.cache_root_dir(), self.team_key)
-
-    def lineup_cache_file(self):
-        return "{}/lineup.pkl".format(self.cache_team_dir())
-
-    def bench_cache_file(self):
-        return "{}/bench.pkl".format(self.cache_team_dir())
-
-    def free_agents_cache_file(self):
-        return "{}/free_agents.pkl".format(self.cache_root_dir())
-
-    def blacklist_cache_file(self):
-        return "{}/blacklist.pkl".format(self.cache_team_dir())
 
 
 class ScoreComparer:
@@ -146,7 +118,8 @@ class ManagerBot:
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
         self.lg = yfa.League(self.sc, cfg['League']['id'])
         self.tm = self.lg.to_team(self.lg.team_key())
-        self.cache = Cache(self.cfg, self.lg.team_key())
+        self.tm_cache = utils.TeamCache(self.cfg, self.lg.team_key())
+        self.lg_cache = utils.LeagueCache(self.cfg)
         self.pred_bldr = None
         self.my_team_bldr = self._construct_roster_builder()
         self.ppool = None
@@ -169,7 +142,7 @@ class ManagerBot:
         self.auto_pick_opponent()
 
     def _load_blacklist(self):
-        fn = self.cache.blacklist_cache_file()
+        fn = self.tm_cache.blacklist_cache_file()
         if os.path.exists(fn):
             with open(fn, "rb") as f:
                 blacklist = pickle.load(f)
@@ -224,7 +197,7 @@ class ManagerBot:
             assert(False), "Need to implement pruning of IR"
 
     def _save_blacklist(self):
-        fn = self.cache._blacklist_cache_file()
+        fn = self.tm_cache._blacklist_cache_file()
         with open(fn, "wb") as f:
             pickle.dump(self.blacklist, f)
 
@@ -250,19 +223,12 @@ class ManagerBot:
         self.pred_bldr = loader(self.lg, self.cfg)
 
     def save(self):
-        with open(self.cache.lineup_cache_file(), "wb") as f:
+        with open(self.tm_cache.lineup_cache_file(), "wb") as f:
             pickle.dump(self.lineup, f)
-        with open(self.cache.bench_cache_file(), "wb") as f:
+        with open(self.tm_cache.bench_cache_file(), "wb") as f:
             pickle.dump(self.bench, f)
-        self.save_prediction_builder()
-
-    def save_prediction_builder(self):
-        """Save the contents of the prediction builder to disk"""
-        if self.pred_bldr is None:
-            raise RuntimeError("No prediction builder to save!")
-        module = self._get_prediction_module()
-        saver = getattr(module, self.cfg['Prediction']['builderClassSaver'])
-        saver(self.pred_bldr, self.cfg)
+        with open(self.lg_cache.prediction_builder_cache_file(), "wb") as f:
+            pickle.dump(self.pred_bldr, f)
 
     def fetch_cur_lineup(self):
         """Fetch the current lineup as set in Yahoo!"""
@@ -287,8 +253,8 @@ class ManagerBot:
     def fetch_free_agents(self):
         free_agents = None
 
-        if os.path.exists(self.cache.free_agents_cache_file()):
-            with open(self.cache.free_agents_cache_file(), "rb") as f:
+        if os.path.exists(self.lg_cache.free_agents_cache_file()):
+            with open(self.lg_cache.free_agents_cache_file(), "rb") as f:
                 free_agents = pickle.load(f)
             if datetime.datetime.now() > free_agents["expiry"]:
                 free_agents = None
@@ -298,26 +264,27 @@ class ManagerBot:
             free_agents = {}
             free_agents["players"] = self.lg.free_agents(None)
             free_agents["expiry"] = datetime.datetime.now() + \
-                datetime.timedelta(minutes=30)
+                datetime.timedelta(
+                    minutes=int(self.cfg['Cache']['freeAgentExpiry']))
             self.logger.info(
                 "Free agents fetch complete.  {} players in pool".
                 format(len(free_agents["players"])))
 
-            with open(self.cache.free_agents_cache_file(), "wb") as f:
+            with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
         return free_agents["players"]
 
     def invalidate_free_agents(self, plyrs):
-        if os.path.exists(self.cache.free_agents_cache_file()):
-            with open(self.cache.free_agents_cache_file(), "rb") as f:
+        if os.path.exists(self.lg_cache.free_agents_cache_file()):
+            with open(self.lg_cache.free_agents_cache_file(), "rb") as f:
                 free_agents = pickle.load(f)
 
             plyr_ids = [e["player_id"] for e in plyrs]
             self.logger.info("Removing player IDs from free agent cache".
                              format(plyr_ids))
             free_agents = free_agents[~free_agents.player_id.isin(plyr_ids)]
-            with open(self.cache.free_agents_cache_file(), "wb") as f:
+            with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
     def sum_opponent(self, opp_team_key):
@@ -335,16 +302,16 @@ class ManagerBot:
         return (team_name, opp_sum)
 
     def load_lineup(self):
-        if os.path.exists(self.cache.lineup_cache_file()):
-            with open(self.cache.lineup_cache_file(), "rb") as f:
+        if os.path.exists(self.tm_cache.lineup_cache_file()):
+            with open(self.tm_cache.lineup_cache_file(), "rb") as f:
                 self.lineup = pickle.load(f)
         else:
             self.lineup = []
             self.fill_empty_spots()
 
     def load_bench(self):
-        if os.path.exists(self.cache.bench_cache_file()):
-            with open(self.cache.bench_cache_file(), "rb") as f:
+        if os.path.exists(self.tm_cache.bench_cache_file()):
+            with open(self.tm_cache.bench_cache_file(), "rb") as f:
                 self.bench = pickle.load(f)
         else:
             self.pick_bench()
