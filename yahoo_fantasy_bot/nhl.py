@@ -189,7 +189,7 @@ class PlayerPrinter:
 class Scorer:
     """Class that scores rosters that it is given"""
     def __init__(self, cfg):
-        pass
+        self.cfg = cfg
 
     def summarize(self, df):
         """Summarize the dataframe into individual stat categories
@@ -207,7 +207,10 @@ class Scorer:
             val = 0
             for plyr in df.iterrows():
                 if not np.isnan(plyr[1][stat]):
-                    val += plyr[1][stat] / 82 * plyr[1]['WK_G']
+                    if self.cfg['Scorer'].getboolean('useWeeklySchedule'):
+                        val += plyr[1][stat] / 82 * plyr[1]['WK_G']
+                    else:
+                        val += plyr[1][stat]
             res[stat] = val
 
         # Handle ratio stats

@@ -272,7 +272,7 @@ class Builder:
 
 
 class PlayerSelector:
-    RANK_STATS_DESCENDING = ["ERA", "WHIP"]
+    RANK_STATS_DESCENDING = ["ERA", "WHIP", 'percent_owned']
 
     """Class that will select players from a container to include on a roster.
 

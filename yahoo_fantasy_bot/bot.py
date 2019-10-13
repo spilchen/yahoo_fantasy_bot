@@ -166,7 +166,7 @@ class ManagerBot:
         for plyr in top_owners.iterrows():
             p = plyr[1]
             if p['name'] not in lineup_names:
-                print("Adding {} to bench...".format(p['name']))
+                self.logger.info("Adding {} to bench...".format(p['name']))
                 self.bench.append(p)
                 if len(self.bench) == bench_spots:
                     break
@@ -257,6 +257,8 @@ class ManagerBot:
             with open(self.lg_cache.free_agents_cache_file(), "rb") as f:
                 free_agents = pickle.load(f)
             if datetime.datetime.now() > free_agents["expiry"]:
+                self.logger.info("Free agent cache is stale.  Expires at {}".
+                                 format(free_agents["expiry"]))
                 free_agents = None
 
         if free_agents is None:
@@ -283,7 +285,9 @@ class ManagerBot:
             plyr_ids = [e["player_id"] for e in plyrs]
             self.logger.info("Removing player IDs from free agent cache".
                              format(plyr_ids))
-            free_agents = free_agents[~free_agents.player_id.isin(plyr_ids)]
+            new_players = [e for e in free_agents["players"]
+                           if e['player_id'] not in plyr_ids]
+            free_agents['players'] = new_players
             with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
@@ -342,8 +346,9 @@ class ManagerBot:
                 if plyr['player_id'] in ids_in_roster:
                     continue
 
-                print("Player: {} Positions: {}".
-                      format(plyr['name'], plyr['eligible_positions']))
+                self.logger.info("Player: {} Positions: {}".
+                                 format(plyr['name'],
+                                        plyr['eligible_positions']))
 
                 plyr['selected_position'] = np.nan
                 self.lineup = self.my_team_bldr.fit_if_space(self.lineup, plyr)
@@ -468,7 +473,7 @@ class ManagerBot:
 
         # Change the free agent cache to remove the players we added
         if not dry_run:
-            adds = roster.get_adds_completed()
+            adds = roster_chg.get_adds_completed()
             self.invalidate_free_agents(adds)
 
     def pick_opponent(self, opp_team_key):
@@ -484,7 +489,7 @@ class ManagerBot:
         try:
             opp_team_key = self.tm.matchup(edit_wk)
         except RuntimeError:
-            print("Could not find opponent.  Picking ourselves...")
+            self.logger.info("Could not find opponent.  Picking ourselves...")
             opp_team_key = self.lg.team_key()
 
         self.pick_opponent(opp_team_key)
