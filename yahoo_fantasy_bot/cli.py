@@ -16,6 +16,7 @@ class Driver:
         menu_opts = {"P": self._pick_opponent,
                      "R": self._print_roster,
                      "S": self._show_score,
+                     "F": self._fill_empty_roster_spots,
                      "A": self._auto_select_players,
                      "M": self._manual_select_players,
                      "T": self._show_two_start_pitchers,
@@ -43,6 +44,7 @@ class Driver:
         print("P - Pick opponent")
         print("R - Show roster")
         print("S - Show sumarized scores")
+        print("F - Fill empty roster spots")
         print("A - Auto select players")
         print("M - Manual select players")
         print("T - Show two start pitchers")
@@ -81,6 +83,12 @@ class Driver:
 
     def _show_score(self):
         self.bot.show_score()
+
+    def _fill_empty_roster_spots(self):
+        self.bot.pick_injury_reserve()
+        self.bot.move_non_available_players()
+        self.bot.fill_empty_spots()
+        self.bot.pick_bench()
 
     def _auto_select_players(self):
         print("")

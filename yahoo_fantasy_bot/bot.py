@@ -196,6 +196,24 @@ class ManagerBot:
         else:
             assert(False), "Need to implement pruning of IR"
 
+    def move_non_available_players(self):
+        """Remove any player that has a status (e.g. DTD, SUSP, etc.).
+
+        If the player is important enough, they will be added back to the bench
+        pending the ownership percentage.
+        """
+        roster = self._get_orig_roster()
+        for plyr in roster:
+            if plyr['status'].strip() != '':
+                for idx, lp in enumerate(self.lineup):
+                    if lp['player_id'] == plyr['player_id']:
+                        self.logger.info(
+                            "Moving {} out of the starting lineup because "
+                            "they are not available ({})".format(
+                                plyr['name'], plyr['status']))
+                        del self.lineup[idx]
+                        break
+
     def _save_blacklist(self):
         fn = self.tm_cache._blacklist_cache_file()
         with open(fn, "wb") as f:
@@ -377,6 +395,8 @@ class ManagerBot:
             if i+1 > num_iters:
                 break
             if plyr['name'] in self.blacklist:
+                continue
+            if plyr['percent_owned'] <= 10:
                 continue
 
             print("Player: {} Positions: {}".
