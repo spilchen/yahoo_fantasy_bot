@@ -17,7 +17,8 @@ class Driver:
                      "R": self._print_roster,
                      "S": self._show_score,
                      "F": self._fill_empty_roster_spots,
-                     "A": self._auto_select_players,
+                     "O": self._optimize_lineup,
+                     "I": self._sync_lineup_with_yahoo,
                      "M": self._manual_select_players,
                      "T": self._show_two_start_pitchers,
                      "L": self._list_players,
@@ -45,7 +46,8 @@ class Driver:
         print("R - Show roster")
         print("S - Show sumarized scores")
         print("F - Fill empty roster spots")
-        print("A - Auto select players")
+        print("O - Optimizer lineup")
+        print("I - Reinit local lineup with Yahoo!")
         print("M - Manual select players")
         print("T - Show two start pitchers")
         print("L - List players")
@@ -90,11 +92,14 @@ class Driver:
         self.bot.fill_empty_spots()
         self.bot.pick_bench()
 
-    def _auto_select_players(self):
+    def _optimize_lineup(self):
         try:
-            self.bot.auto_select_players()
+            self.bot.optimize_lineup()
         except KeyError as e:
             print(e)
+
+    def _sync_lineup_with_yahoo(self):
+        self.bot.sync_lineup()
 
     def _manual_select_players(self):
         self.bot.print_roster()

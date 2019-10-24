@@ -383,7 +383,30 @@ class ManagerBot:
     def print_roster(self):
         self.display.printRoster(self.lineup, self.bench, self.injury_reserve)
 
-    def auto_select_players(self):
+    def sync_lineup(self):
+        """Reset the local lineup to the one that is set in Yahoo!"""
+        yahoo_roster = self._get_orig_roster()
+        roster_ids = [e['player_id'] for e in yahoo_roster]
+        bench_ids = [e['player_id'] for e in yahoo_roster
+                     if e['selected_position'] == 'BN']
+        ir_ids = [e['player_id'] for e in yahoo_roster
+                  if e['selected_position'] == 'DL']
+        sel_plyrs = self.ppool[self.ppool['player_id'].isin(roster_ids)]
+        lineup = []
+        bench = []
+        ir = []
+        for plyr in sel_plyrs.iterrows():
+            if plyr[1]['player_id'] in bench_ids:
+                bench.append(plyr[1])
+            elif plyr[1]['player_id'] in ir_ids:
+                ir.append(plyr[1])
+            else:
+                lineup.append(plyr[1])
+        self.lineup = lineup
+        self.bench = bench
+        self.injury_reserve = ir
+
+    def optimize_lineup(self):
         # Filter out any players from the lineup as we don't want to consider
         # them again.
         indexColumn = self.cfg['Prediction']['indexColumn']
