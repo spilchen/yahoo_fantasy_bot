@@ -11,6 +11,7 @@ import datetime
 import pandas as pd
 import numpy as np
 import importlib
+import copy
 
 
 class ScoreComparer:
@@ -38,6 +39,10 @@ class ScoreComparer:
         my_sum = self.scorer.summarize(df)
         (w, l, cat_comp) = self._compare_scores(my_sum, self.opp_sum)
         return (w, l, my_sum, cat_comp)
+
+    def update_score(self, lineup):
+        (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
+            self.compute_score(lineup)
 
     def _is_new_score_better(self, new_w, new_l, new_cat_comp):
         if self.orig_w + self.orig_l > 0:
@@ -378,43 +383,24 @@ class ManagerBot:
     def print_roster(self):
         self.display.printRoster(self.lineup, self.bench, self.injury_reserve)
 
-    def auto_select_players(self, num_iters, categories):
+    def auto_select_players(self):
         # Filter out any players from the lineup as we don't want to consider
         # them again.
         indexColumn = self.cfg['Prediction']['indexColumn']
         lineup_ids = [e[indexColumn] for e in self.lineup]
-        avail_plyrs = self.ppool[~self.ppool[indexColumn].isin(lineup_ids)]
-        selector = roster.PlayerSelector(avail_plyrs)
-        try:
-            selector.rank(categories)
-        except KeyError:
-            raise KeyError("Categories are not valid: {}".format(categories))
+        avail_plyrs = self.ppool[~self.ppool[indexColumn].isin(lineup_ids) &
+                                 ~self.ppool['name'].isin(self.blacklist)]
+        avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
 
         score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
-        for i, plyr in enumerate(selector.select()):
-            if i+1 > num_iters:
-                break
-            if plyr['name'] in self.blacklist:
-                continue
-            if plyr['percent_owned'] <= 10:
-                continue
-
-            print("Player: {} Positions: {}".
-                  format(plyr['name'], plyr['eligible_positions']))
-
-            plyr['selected_position'] = np.nan
-            best_lineup = self._copy_roster(self.lineup)
-            found_better = False
-            for potential_lineup in \
-                    self.my_team_bldr.enumerate_fit(self.lineup, plyr):
-                if score_comparer.compare_lineup(potential_lineup):
-                    best_lineup = self._copy_roster(potential_lineup)
-                    print("  *** Found better lineup")
-                    found_better = True
-            self.lineup = self._copy_roster(best_lineup)
-            if found_better:
-                self.pick_bench()
-                self.print_roster()
+        optimizer_func = self._get_lineup_optimizer_function()
+        best_lineup = optimizer_func(self.cfg, score_comparer,
+                                     self.my_team_bldr, avail_plyrs,
+                                     self.lineup)
+        if best_lineup:
+            self.lineup = copy.deepcopy(best_lineup)
+            self.pick_bench()
+            self.print_roster()
 
     def show_score(self):
         if self.opp_sum is None:
@@ -514,12 +500,6 @@ class ManagerBot:
 
         self.pick_opponent(opp_team_key)
 
-    def _copy_roster(self, roster):
-        new_roster = []
-        for plyr in roster:
-            new_roster.append(plyr.copy())
-        return new_roster
-
     def _get_team_name(self, lg, team_key):
         for team in lg.teams():
             if team['team_key'] == team_key:
@@ -547,6 +527,16 @@ class ManagerBot:
             self.cfg['Display']['module'],
             package=self.cfg['Display']['package'])
         return getattr(module, self.cfg['Display']['class'])
+
+    def _get_lineup_optimizer_function(self):
+        """Return the function used to optimize a lineup.
+
+        The config file is used to determine the appropriate function.
+        """
+        module = importlib.import_module(
+            self.cfg['LineupOptimizer']['module'],
+            package=self.cfg['LineupOptimizer']['package'])
+        return getattr(module, self.cfg['LineupOptimizer']['function'])
 
     def _construct_roster_builder(self):
         pos_list = self.cfg['League']['positions'].split(",")

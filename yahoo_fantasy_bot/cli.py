@@ -91,20 +91,8 @@ class Driver:
         self.bot.pick_bench()
 
     def _auto_select_players(self):
-        print("")
-        print("Number of iterations: ")
         try:
-            num_iters = int(input())
-        except ValueError:
-            print("*** input a valid number")
-            return
-        print("Stat categories to rank (delimited with comma):")
-        categories_combined = input()
-        categories = categories_combined.rstrip().split(",")
-        print(categories)
-
-        try:
-            self.bot.auto_select_players(num_iters, categories)
+            self.bot.auto_select_players()
         except KeyError as e:
             print(e)
 
