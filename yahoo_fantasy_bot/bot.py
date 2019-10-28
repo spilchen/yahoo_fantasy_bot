@@ -258,7 +258,8 @@ class ManagerBot:
         all_mine = self._get_orig_roster()
         pct_owned = self.lg.percent_owned([e['player_id'] for e in all_mine])
         for p, pct_own in zip(all_mine, pct_owned):
-            if p['selected_position'] == 'BN':
+            if p['selected_position'] == 'BN' or \
+                    p['selected_position'] == 'IR':
                 p['selected_position'] = np.nan
             assert(pct_own['player_id'] == p['player_id'])
             p['percent_owned'] = pct_own['percent_owned']
@@ -390,7 +391,8 @@ class ManagerBot:
         bench_ids = [e['player_id'] for e in yahoo_roster
                      if e['selected_position'] == 'BN']
         ir_ids = [e['player_id'] for e in yahoo_roster
-                  if e['selected_position'] == 'DL']
+                  if (e['selected_position'] == 'DL' or
+                      e['selected_position'] == 'IR')]
         sel_plyrs = self.ppool[self.ppool['player_id'].isin(roster_ids)]
         lineup = []
         bench = []
