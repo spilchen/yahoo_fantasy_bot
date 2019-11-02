@@ -4,9 +4,9 @@ import copy
 import logging
 import numpy as np
 import pandas as pd
+from progressbar import ProgressBar, Percentage, Bar
 import math
 import random
-import sys
 from yahoo_fantasy_bot import roster
 
 
@@ -67,8 +67,10 @@ def optimize_with_genetic_algorithm(cfg, score_comparer, roster_bldr,
 
     See GeneticAlgorithm.__init__ for parameter type descriptions.
     """
-    # SPILLY - are the players in lineup included in avail_plyrs?  if not, we
-    # need to include it
+    for plyr in lineup:
+        if plyr['status'] != '':
+            continue
+        avail_plyrs = avail_plyrs.append(plyr, ignore_index=True)
     algo = GeneticAlgorithm(cfg, score_comparer, roster_bldr, avail_plyrs,
                             lineup)
     generations = int(cfg['LineupOptimizer']['generations']) \
@@ -118,7 +120,8 @@ class GeneticAlgorithm:
         self.ppool = avail_plyrs
         self.population = []
         self.logger = logging.getLogger()
-        self.best_lineup = lineup
+        self.best_lineup = {'players': lineup, 'score': None}
+        self.pbar = None
 
     def run(self, generations):
         """
@@ -130,29 +133,57 @@ class GeneticAlgorithm:
         generated
         :rtype: list or None
         """
+        self._init_progress_bar(generations)
         self._init_population()
         for generation in range(generations):
-            sys.stdout.write(".")
-            sys.stdout.flush()
+            self._update_progress(generation)
             self._mate()
             self._mutate()
         self._compute_best_lineup()
         self._log_lineup("Best lineup", self.best_lineup)
-        return self.best_lineup
+        return self.best_lineup['players']
 
     def _log_lineup(self, descr, lineup):
-        self.logger.info("Lineup " + str(descr))
-        for plyr in lineup:
+        self.logger.info("Lineup {}, Score={}".format(descr, lineup['score']))
+        for plyr in lineup['players']:
             self.logger.info(
                 "{} - {} ({}%)".format(plyr['selected_position'],
                                        plyr['name'],
                                        plyr['percent_owned']))
+
+    def _init_progress_bar(self, generations):
+        """
+        Initialize the progress bar
+
+        :param generations: Number of generations we will do
+        """
+        self.pbar = ProgressBar(widgets=[Percentage(), Bar()],
+                                maxval=generations)
+        self.pbar.start()
+
+    def _update_progress(self, generation):
+        """
+        Shows progress of the lineup selection
+
+        :param generation: Current generation number
+        :param generations: Max number of generations
+        """
+        self.pbar.update(generation + 1)
 
     def _log_population(self):
         for i, lineup in enumerate(self.population):
             self._log_lineup("Initial Population " + str(i), lineup)
 
     def _init_population(self):
+        self._generate_random_lineups()
+        self.score_comparer.compute_stddevs(
+            [e['players'] for e in self.population])
+        self._score_population()
+        self.best_lineup['score'] = \
+            self.score_comparer.compure_score_as_stdev(
+                        self.best_lineup['players'])
+
+    def _generate_random_lineups(self):
         """
         Setup the initial population of random lineups
 
@@ -177,7 +208,8 @@ class GeneticAlgorithm:
 
                     # If lineup is no complete add it to the population
                     if len(lineup) == self.roster_bldr.max_players():
-                        self.population.append(lineup)
+                        self.population.append({'players': lineup,
+                                                'score': None})
 
                     break   # Stop trying to find a lineup for plyr
                 except LookupError:
@@ -188,6 +220,15 @@ class GeneticAlgorithm:
                 lineups.append(lineup)
         self._log_population()
 
+    def _score_population(self):
+        """
+        Compute a score for each lineup in the population that
+        """
+        for l in self.population:
+            if l['score'] is None:
+                l['score'] = \
+                    self.score_comparer.compure_score_as_stdev(l['players'])
+
     def _compute_best_lineup(self):
         """
         Goes through all of the possible lineups and figures out the best
@@ -195,11 +236,11 @@ class GeneticAlgorithm:
         The best lineup will be set in self.best_lineup
         """
         assert(self.best_lineup)
-        self.score_comparer.update_score(self.best_lineup)
+        assert(self.best_lineup['score'] is not None)
         for lineup in self.population:
-            if self.score_comparer.compare_lineup(lineup):
+            assert(lineup['score'] is not None)
+            if lineup['score'] > self.best_lineup['score']:
                 self.best_lineup = lineup
-                self.score_compare.update_score(lineup)
                 self._log_lineup("Best", lineup)
 
     def _mate(self):
@@ -210,6 +251,8 @@ class GeneticAlgorithm:
         selectionStyle config parameter.
         """
         mates = self._pick_lineups()
+        self.population.remove(mates[0])
+        self.population.remove(mates[1])
         offspring = self._produce_offspring(mates)
         for i, lineup in enumerate(offspring):
             self._log_lineup("Offspring " + str(i), lineup)
@@ -234,11 +277,12 @@ class GeneticAlgorithm:
         for _ in range(int(rounds)):
             next_participants = []
             for opp_1, opp_2 in zip(participants[0::2], participants[1::2]):
-                self.score_comparer.update_score(opp_1)
-                if self.score_comparer.compare_lineup(opp_2):
-                    next_participants.append(opp_2)
-                else:
+                assert(opp_1['score'] is not None)
+                assert(opp_2['score'] is not None)
+                if opp_1['score'] > opp_2['score']:
                     next_participants.append(opp_1)
+                else:
+                    next_participants.append(opp_2)
             participants = next_participants
         assert(len(participants) == 2)
         return participants
@@ -252,10 +296,14 @@ class GeneticAlgorithm:
         """
         assert(len(mates) == 2)
         ppool = self._create_player_pool(mates)
-        offspring = []
+        offspring = [mates[0], mates[1]]
         for _ in range(int(self.cfg['LineupOptimizer']['numOffspring'])):
-            offspring.append(self._complete_lineup([], ppool))
-        return offspring
+            plyrs = self._complete_lineup(ppool, [])
+            score = self.score_comparer.compure_score_as_stdev(plyrs)
+            offspring.append({'players': plyrs, 'score': score})
+        sorted(offspring, key=lambda e: e['score'])
+        import pdb; pdb.set_trace()
+        return offspring[0:2]
 
     def _create_player_pool(self, lineups):
         """
@@ -269,21 +317,21 @@ class GeneticAlgorithm:
         df = pd.DataFrame()
         player_ids = []
         for lineup in lineups:
-            for i, plyr in enumerate(lineup):
+            for i, plyr in enumerate(lineup['players']):
                 # Avoid adding duplicate players to the pool
                 if plyr['player_id'] not in player_ids:
                     df = df.append(plyr, ignore_index=True)
                     player_ids.append(plyr['player_id'])
         return df
 
-    def _complete_lineup(self, lineup, ppool):
+    def _complete_lineup(self, ppool, lineup):
         """
         Complete a lineup so that it has the max number of players
 
         The players are selected at random.
 
-        :param lineup: Lineup to fill.  Can be [].
         :param ppool: Player pool to pull from
+        :param lineup: Lineup to fill.  Can be [].
         :return: List that contains the players in the lineup
         """
         ids = [e['player_id'] for e in lineup]
@@ -313,14 +361,17 @@ class GeneticAlgorithm:
         mutate_pct = int(self.cfg['LineupOptimizer']['mutationPct'])
         for lineup in self.population:
             mutates = []
-            for i, plyr in enumerate(lineup):
+            plyrs = lineup['players']
+            for i, plyr in enumerate(plyrs):
                 if random.randint(0, 100) <= mutate_pct:
                     self.logger.info("Mutating player {}".format(plyr['name']))
                     mutates.append(i)
             mutates.reverse()   # Delete at the end of lineup first
             for i in mutates:
-                del(lineup[i])
-            if len(lineup) < self.roster_bldr.max_players():
-                self._complete_lineup(lineup, self.ppool)
+                del(plyrs[i])
+            if len(plyrs) < self.roster_bldr.max_players():
+                self._complete_lineup(self.ppool, plyrs)
+                lineup['score'] = \
+                    self.score_comparer.compure_score_as_stdev(plyrs)
                 self._log_lineup("Mutated lineup", lineup)
-                assert(len(lineup) == self.roster_bldr.max_players())
+                assert(len(plyrs) == self.roster_bldr.max_players())

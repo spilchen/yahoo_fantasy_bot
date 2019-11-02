@@ -24,6 +24,7 @@ class ScoreComparer:
         self.opp_sum = opp_sum
         (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
             self.compute_score(lineup)
+        self.stddevs = None
 
     def compare_lineup(self, potential_lineup):
         better_lineup = False
@@ -43,6 +44,44 @@ class ScoreComparer:
     def update_score(self, lineup):
         (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
             self.compute_score(lineup)
+
+    def compute_stddevs(self, lineups):
+        """
+        Compute the standard deviations of each of the categories
+
+        The standard deviation is computed from a list of lineups that is
+        passed in.
+
+        :param lineups: Lineups to compute the standard deviations from
+        """
+        scores = pd.DataFrame()
+        for lineup in lineups:
+            df = pd.DataFrame(data=lineup, columns=lineup[0].index)
+            score_sum = self.scorer.summarize(df)
+            scores = scores.append(score_sum, ignore_index=True)
+        self.stddevs = scores.std()
+
+    def compure_score_as_stdev(self, lineup):
+        """
+        Calculate a lineup score by comparing it against the standard devs
+
+        A call to compute_stddevs should already have been made
+
+        :param lineup: Lineup to compute standard deviation from
+        :return: Standard deviation score
+        """
+        assert(self.stddevs is not None)
+        df = pd.DataFrame(data=lineup, columns=lineup[0].index)
+        score_sum = self.scorer.summarize(df)
+        stddev_score = 0
+        for (c_myname, c_myval), c_stddev, (c_opname, c_opval) in \
+                zip(score_sum.items(), self.stddevs, self.opp_sum.items()):
+            assert(c_myname == c_opname)
+            v = (c_myval - c_opval) / c_stddev
+            if not self.scorer.is_highest_better(c_myname):
+                v = v * -1
+            stddev_score += v
+        return stddev_score
 
     def _is_new_score_better(self, new_w, new_l, new_cat_comp):
         if self.orig_w + self.orig_l > 0:

@@ -7,3 +7,4 @@ yahoo_oauth
 baseball_id==0.0.6
 npyscreen
 nhl_scraper==0.0.3
+progressbar
