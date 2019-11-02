@@ -220,7 +220,7 @@ class ManagerBot:
                         break
 
     def _save_blacklist(self):
-        fn = self.tm_cache._blacklist_cache_file()
+        fn = self.tm_cache.blacklist_cache_file()
         with open(fn, "wb") as f:
             pickle.dump(self.blacklist, f)
 

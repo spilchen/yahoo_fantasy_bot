@@ -272,8 +272,6 @@ class Builder:
 
 
 class PlayerSelector:
-    RANK_STATS_DESCENDING = ["ERA", "WHIP", 'percent_owned']
-
     """Class that will select players from a container to include on a roster.
 
     The roster container it is given should be a pool of all available players
@@ -285,6 +283,7 @@ class PlayerSelector:
     """
     def __init__(self, player_pool):
         self.ppool = player_pool
+        self.rank_stats_descending = ["ERA", "WHIP", "percent_owned"]
 
     def rank(self, stat_categories):
         """Rank players in the player pool according to the stat categories
@@ -298,6 +297,12 @@ class PlayerSelector:
             self.ppool['rank'] += self.ppool[stat].rank(
                     ascending=self._is_stat_ascending(stat))
 
+    def shuffle(self):
+        """
+        Shuffle the player pool in order to produce a random roster
+        """
+        self.ppool = self.ppool.sample(frac=1).reset_index(drop=True)
+
     def select(self):
         """Iterate over players in the pool according to the rank
 
@@ -309,7 +314,10 @@ class PlayerSelector:
             yield plyr_tuple[1]
 
     def _is_stat_ascending(self, stat):
-        if stat in self.RANK_STATS_DESCENDING:
+        if stat in self.rank_stats_descending:
             return False
         else:
             return True
+
+    def set_descending_categories(self, cats):
+        self.rank_stats_descending = cats

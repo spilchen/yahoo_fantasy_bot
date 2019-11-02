@@ -14,6 +14,7 @@ import logging
 import os
 import pandas as pd
 import configparser
+from imp import reload
 
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -27,6 +28,7 @@ if __name__ == '__main__':
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])
 
+    reload(logging)
     logging.basicConfig(
         filename=cfg['Logger']['file'],
         level=logging.INFO,
