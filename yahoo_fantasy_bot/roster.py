@@ -1,7 +1,8 @@
 #!/usr/bin/python
 
-from yahoo_fantasy_bot import utils
+import logging
 import numpy as np
+from yahoo_fantasy_bot import utils
 
 
 class Container:
@@ -103,6 +104,7 @@ class Container:
 class Builder:
     """Class that generates roster permuations suitable for evaluation"""
     def __init__(self, positions):
+        self.logger = logging.getLogger()
         self.positions = positions
         self.pos_count = {}
         for p in positions:
@@ -129,10 +131,20 @@ class Builder:
         available for the player then an LookupError assertion is returned.
         :rtype: list
         """
+        rpos = {}
+        for p in roster:
+            if p['selected_position'] in rpos:
+                rpos[p['selected_position']] += 1
+            else:
+                rpos[p['selected_position']] = 1
+        self.logger.debug("Roster positions: {}".format(rpos))
+        self.logger.debug("Fit {}: positions={}".format(
+            player['name'], player['eligible_positions']))
         # Search if any of the players eligible_positions are open.  Then it is
         # an easy fit.
         for pos in player.eligible_positions:
             if self._has_empty_position_slot(roster, pos):
+                self.logger.debug("Fit at empty position: {}".format(pos))
                 player.selected_position = pos
                 roster.append(player)
                 return roster
@@ -145,10 +157,15 @@ class Builder:
         # positions.  If any of them can move to empty spot then we can fit.
         for pos in player.eligible_positions:
             for occurance in range(self.pos_count[pos]):
+                self.logger.debug("Attempt swap at position: {}".format(pos))
                 plyr_at_pos = self._get_player_by_pos(roster, pos, occurance)
+                self.logger.debug("Swap out {}: {}".format(
+                    plyr_at_pos['name'], pos))
                 if self._swap_eligible_pos_recurse(roster, plyr_at_pos,
                                                    checked_pos):
                     assert(self._has_empty_position_slot(roster, pos))
+                    self.logger.debug('{}: {} -> {}'.format(
+                        player['name'], player['selected_position'], pos))
                     player.selected_position = pos
                     roster.append(player)
                     return roster
@@ -250,6 +267,8 @@ class Builder:
         for pos in player.eligible_positions:
             if pos != player.selected_position:
                 if self._has_empty_position_slot(roster, pos):
+                    self.logger.debug('{}: {} -> {}'.format(
+                        player['name'], player['selected_position'], pos))
                     player.selected_position = pos
                     return True
 
@@ -266,6 +285,8 @@ class Builder:
                     if self._swap_eligible_pos_recurse(roster, other_plyr,
                                                        checked_pos):
                         assert(self._has_empty_position_slot(roster, pos))
+                        self.logger.debug('{}: {} -> {}'.format(
+                            player['name'], player['selected_position'], pos))
                         player.selected_position = pos
                         return True
         return False

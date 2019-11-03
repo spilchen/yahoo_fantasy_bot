@@ -61,7 +61,7 @@ class ScoreComparer:
             scores = scores.append(score_sum, ignore_index=True)
         self.stddevs = scores.std()
 
-    def compure_score_as_stdev(self, lineup):
+    def compute_score_as_stdev(self, lineup):
         """
         Calculate a lineup score by comparing it against the standard devs
 
@@ -232,9 +232,6 @@ class ManagerBot:
                         del self.lineup[idx]
                         break
 
-        if len(self.lineup) <= self.my_team_bldr.max_players():
-            self.fill_empty_spots()
-
         if len(ir) < ir_spots:
             self.injury_reserve = ir
         else:
@@ -383,6 +380,21 @@ class ManagerBot:
         else:
             self.pick_bench()
 
+    def fill_empty_spots_from_bench(self):
+        import pdb; pdb.set_trace()
+        if len(self.lineup) <= self.my_team_bldr.max_players():
+            for plyr in self.bench:
+                try:
+                    if plyr['status'] != '':
+                        continue
+                    plyr['selected_position'] = np.nan
+                    self.lineup = self.my_team_bldr.fit_if_space(self.lineup,
+                                                                 plyr)
+                except LookupError:
+                    pass
+                if len(self.lineup) == self.my_team_bldr.max_players():
+                    break
+
     def fill_empty_spots(self):
         if len(self.lineup) <= self.my_team_bldr.max_players():
             stat_categories = self.lg.stat_categories()
@@ -395,6 +407,7 @@ class ManagerBot:
                 self.initial_fit(stats, pos_type)
 
     def initial_fit(self, categories, pos_type):
+        import pdb; pdb.set_trace()
         selector = roster.PlayerSelector(self.ppool)
         selector.rank(categories)
         ids_in_roster = [e['player_id'] for e in self.lineup]
@@ -455,6 +468,7 @@ class ManagerBot:
         avail_plyrs = self.ppool[~self.ppool[indexColumn].isin(lineup_ids) &
                                  ~self.ppool['name'].isin(self.blacklist)]
         avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
+        avail_plyrs = avail_plyrs[avail_plyrs['status'] == '']
 
         score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
         optimizer_func = self._get_lineup_optimizer_function()

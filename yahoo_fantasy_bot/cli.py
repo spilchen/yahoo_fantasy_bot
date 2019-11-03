@@ -89,6 +89,7 @@ class Driver:
     def _fill_empty_roster_spots(self):
         self.bot.pick_injury_reserve()
         self.bot.move_non_available_players()
+        self.bot.fill_empty_spots_from_bench()
         self.bot.fill_empty_spots()
         self.bot.pick_bench()
 

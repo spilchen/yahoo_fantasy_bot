@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import pytest
 from conftest import RBLDR_COLS
+from yahoo_fantasy_bot import roster
 
 
 def test_fit_empty(bldr, empty_roster):
@@ -146,34 +147,28 @@ def test_fit_enumerate_3(bldr, empty_roster):
     itr = bldr.enumerate_fit(r, plyr)
     er = next(itr)
     print(er)
-    assert(er[0]['name'] == 'Ben')
-    assert(np.isnan(er[0]['selected_position']))
-    assert(er[1]['name'] == 'Rance')
-    assert(er[1]['selected_position'] == '3B')
-    assert(er[2]['name'] == 'Garth')
-    assert(er[2]['selected_position'] == '1B')
-    assert(er[3]['name'] == 'George')
-    assert(er[3]['selected_position'] == 'LF')
+    assert(er[0]['name'] == 'Rance')
+    assert(er[0]['selected_position'] == '3B')
+    assert(er[1]['name'] == 'Garth')
+    assert(er[1]['selected_position'] == '1B')
+    assert(er[2]['name'] == 'George')
+    assert(er[2]['selected_position'] == 'LF')
     er = next(itr)
     print(er)
     assert(er[0]['name'] == 'Ben')
     assert(er[0]['selected_position'] == '1B')
-    assert(er[1]['name'] == 'Rance')
-    assert(np.isnan(er[1]['selected_position']))
-    assert(er[2]['name'] == 'Garth')
-    assert(er[2]['selected_position'] == '3B')
-    assert(er[3]['name'] == 'George')
-    assert(er[3]['selected_position'] == 'LF')
+    assert(er[1]['name'] == 'Garth')
+    assert(er[1]['selected_position'] == '3B')
+    assert(er[2]['name'] == 'George')
+    assert(er[2]['selected_position'] == 'LF')
     er = next(itr)
     print(er)
     assert(er[0]['name'] == 'Ben')
     assert(er[0]['selected_position'] == '1B')
     assert(er[1]['name'] == 'Rance')
     assert(er[1]['selected_position'] == '3B')
-    assert(er[2]['name'] == 'Garth')
-    assert(np.isnan(er[2]['selected_position']))
-    assert(er[3]['name'] == 'George')
-    assert(er[3]['selected_position'] == 'LF')
+    assert(er[2]['name'] == 'George')
+    assert(er[2]['selected_position'] == 'LF')
     with pytest.raises(StopIteration):
         er = next(itr)
 
@@ -195,16 +190,20 @@ def test_fit_enumerate_2(bldr, empty_roster):
     itr = bldr.enumerate_fit(r, plyr)
     er = next(itr)
     print(er)
+    assert(er[0]['name'] == 'Paul')
     assert(er[0]['selected_position'] == '3B')
-    assert(np.isnan(er[1]['selected_position']))
-    assert(er[2]['selected_position'] == 'CF')
-    assert(er[3]['selected_position'] == 'SS')
+    assert(er[1]['name'] == 'Gorman')
+    assert(er[1]['selected_position'] == 'CF')
+    assert(er[2]['name'] == 'Kevin')
+    assert(er[2]['selected_position'] == 'SS')
     er = next(itr)
     print(er)
+    assert(er[0]['name'] == 'Paul')
     assert(er[0]['selected_position'] == '3B')
+    assert(er[1]['name'] == 'Robin')
     assert(er[1]['selected_position'] == 'SS')
-    assert(np.isnan(er[2]['selected_position']))
-    assert(er[3]['selected_position'] == 'CF')
+    assert(er[2]['name'] == 'Kevin')
+    assert(er[2]['selected_position'] == 'CF')
     with pytest.raises(StopIteration):
         er = next(itr)
 
@@ -282,6 +281,37 @@ def test_fit_with_multiple_duplicate_positions_2(bldr, empty_roster):
     expected_positions = ['RF', '2B', 'Util', '3B', 'LF', 'CF', '1B']
     for plyr, exp_pos in zip(r, expected_positions):
         assert(plyr['selected_position'] == exp_pos)
+
+
+def test_fit_with_multiple_duplicate_positions_3():
+    bldr = roster.Builder(['C', 'C', 'RW', 'RW', 'LW', 'LW', 'D', 'D', 'D',
+                           'D', 'G', 'G'])
+    rst = []
+    rst.append(pd.Series(['Marchand', ['LW'], 'LW'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Vasilevskiy', ['G'], 'G'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Draisaitl', ['C', 'LW'], 'C'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Letang', ['D'], 'D'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Josi', ['D'], 'D'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Kane', ['RW'], 'RW'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Giroux', ['C', 'LW', 'RW'], 'C'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Doughty', ['D'], 'D'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Ellis', ['D'], 'D'], index=RBLDR_COLS))
+    rst.append(pd.Series(['Hertl', ['C', 'LW'], 'LW'], index=RBLDR_COLS))
+
+    plyr = pd.Series(['Pacioretty', ['LW'], np.nan], index=RBLDR_COLS)
+    # 2: LW, 1: RW, 2: C
+    # Hertl LW -> C
+    #  Draisaitl C -> LW
+    #   Hertl C -> C
+    #     Giroux C -> RW  2: LW, 2: RW, 1: C
+    #                     2: LW, 2: RW, 1: C
+    #                     2: LW, 2: RW, 1: C
+    # Pacioretty cannot fit because there is no LW
+    # The issue is that we moved someone who was already moved
+    import ipdb; ipdb.set_trace()
+    r = bldr.fit_if_space(rst, plyr)
+    assert(len(r) == 12)
+
 
 
 def test_fit_enumerate_dup_position(bldr, empty_roster):

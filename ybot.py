@@ -31,7 +31,8 @@ if __name__ == '__main__':
     reload(logging)
     logging.basicConfig(
         filename=cfg['Logger']['file'],
-        level=logging.INFO,
+        filemode="w",
+        level=cfg['Logger']['level'],
         format='%(asctime)s.%(msecs)03d %(module)s-%(funcName)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
