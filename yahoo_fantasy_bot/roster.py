@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import copy
 import logging
 import numpy as np
 from yahoo_fantasy_bot import utils
@@ -149,9 +150,10 @@ class Builder:
                 roster.append(player)
                 return roster
 
-        checked_pos = {}
-        for p in self.positions:
-            checked_pos[p] = 0
+        # List to keep track of the players swapped in a given fit.  This
+        # ensures the same player isn't moved more than once in a given
+        # sequence of swaps.
+        swapped_plyrs = []
 
         # Look through the other players already starting at the new players
         # positions.  If any of them can move to empty spot then we can fit.
@@ -162,7 +164,7 @@ class Builder:
                 self.logger.debug("Swap out {}: {}".format(
                     plyr_at_pos['name'], pos))
                 if self._swap_eligible_pos_recurse(roster, plyr_at_pos,
-                                                   checked_pos):
+                                                   swapped_plyrs):
                     assert(self._has_empty_position_slot(roster, pos))
                     self.logger.debug('{}: {} -> {}'.format(
                         player['name'], player['selected_position'], pos))
@@ -186,37 +188,29 @@ class Builder:
         combinations to get the player to fit.
         :rtype: iterable
         """
-        # Keeps track of the number of times we checked each position
-        checked_pos = {}
+        for pos in self.pos_count.keys():
+            for occurance in range(self.pos_count[pos]):
+                orig_roster = copy.deepcopy(roster)
+                pos_player = self._get_player_by_pos(roster, pos, occurance)
+                if pos_player is None:
+                    continue
+                pos_player.selected_position = np.nan
+                try:
+                    new_roster = self.fit_if_space(roster, player)
 
-        for pos in self.positions:
-            orig_roster = []
-            for plyr in roster:
-                orig_roster.append(plyr.copy())
-            if pos not in checked_pos:
-                checked_pos[pos] = 0
-            else:
-                checked_pos[pos] += 1
-            pos_player = self._get_player_by_pos(roster, pos, checked_pos[pos])
-            if pos_player is None:
-                continue
-            pos_player.selected_position = np.nan
-            try:
-                new_roster = self.fit_if_space(roster, player)
+                    # Remove anyone from the roster that doesn't have a
+                    # selected position
+                    pruned_roster = []
+                    for plyr in new_roster:
+                        if type(plyr['selected_position']) == str:
+                            pruned_roster.append(plyr)
 
-                # Remove anyone from the roster that doesn't have a selected
-                # position
-                pruned_roster = []
-                for plyr in new_roster:
-                    if type(plyr['selected_position']) == str:
-                        pruned_roster.append(plyr)
-
-                yield pruned_roster
-            except LookupError:
-                pass
-            finally:
-                roster = orig_roster
-                player.selected_position = np.nan
+                    yield pruned_roster
+                except LookupError:
+                    pass
+                finally:
+                    roster = orig_roster
+                    player.selected_position = np.nan
 
     def max_players(self):
         return len(self.positions)
@@ -247,21 +241,24 @@ class Builder:
         else:
             return False
 
-    def _swap_eligible_pos_recurse(self, roster, player, checked_pos):
+    def _swap_eligible_pos_recurse(self, roster, player, swapped_plyrs):
         """Recursively swap positions with players until all positions are used
 
         :param roster: The roster to work with
         :type roster: pandas.DataFrame
         :param player: The player to try and swap around.
         :type player: pandas.Series
-        :param checked_pos: A list of positions that have been recursed on.
-        This is used to prevent infinite recursion on positions we have already
-        checked.
-        :type cheecked_pos: list
+        :param swapped_plyrs: A list of players already swapped in this
+        sequence of trying to fit the player.
+        :type swapped: list
         :return: True if we were able to swap to an empty position
         :rtype: Boolean
         """
         assert(player.selected_position is not None)
+
+        if player['player_id'] in swapped_plyrs:
+            return False
+        swapped_plyrs.append(player['player_id'])
 
         # Check if player can change their position to an empty spot
         for pos in player.eligible_positions:
@@ -275,20 +272,20 @@ class Builder:
         # Recursively check each of the positions that the player plays to
         # see if they can switch out to an empty spot.
         for pos in player.eligible_positions:
-            for _ in range(self.pos_count[pos]):
-                if pos != player.selected_position and \
-                        checked_pos[pos] < self.pos_count[pos]:
+            if pos != player.selected_position:
+                for occurance in range(self.pos_count[pos]):
                     other_plyr = self._get_player_by_pos(roster, pos,
-                                                         checked_pos[pos])
+                                                         occurance)
                     assert(other_plyr is not None), "Nobody for " + pos
-                    checked_pos[pos] += 1
                     if self._swap_eligible_pos_recurse(roster, other_plyr,
-                                                       checked_pos):
+                                                       swapped_plyrs):
                         assert(self._has_empty_position_slot(roster, pos))
                         self.logger.debug('{}: {} -> {}'.format(
                             player['name'], player['selected_position'], pos))
                         player.selected_position = pos
                         return True
+
+        swapped_plyrs.pop()
         return False
 
 
