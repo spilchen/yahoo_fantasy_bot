@@ -23,7 +23,8 @@ class Driver:
                      "T": self._show_two_start_pitchers,
                      "L": self._list_players,
                      "B": self._manage_blacklist,
-                     "Y": self._apply_roster_moves}
+                     "Y": self._apply_roster_moves,
+                     "V": self._evaluate_trades}
 
         while True:
             self._print_main_menu()
@@ -53,6 +54,7 @@ class Driver:
         print("L - List players")
         print("B - Blacklist players")
         print("Y - Apply roster moves")
+        print("V - Evaluate trades")
         print("X - Exit")
         print("")
         print("Pick a selection:")
@@ -79,6 +81,16 @@ class Driver:
         proceed = input()
         if proceed == 'yes':
             self.bot.apply_roster_moves(dry_run=False)
+
+    def _evaluate_trades(self):
+        num_trades = self.bot.evaluate_trades(dry_run=True, verbose=True)
+        if num_trades > 0:
+            print("Type 'yes' to accept these evaluations:")
+            proceed = input()
+            if proceed == 'yes':
+                self.bot.evaluate_trades(dry_run=False, verbose=False)
+        else:
+            print("No trade offers")
 
     def _print_roster(self):
         self.bot.print_roster()

@@ -1,4 +1,4 @@
-**/envs/*
+**/env/*
 *.model
 .ipynb_checkpoints
 __pycache__/
@@ -12,3 +12,4 @@ anaconda-project-local.yml
 .ropeproject
 *.csv
 *.cfg
+tags

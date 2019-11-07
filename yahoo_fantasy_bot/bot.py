@@ -381,7 +381,6 @@ class ManagerBot:
             self.pick_bench()
 
     def fill_empty_spots_from_bench(self):
-        import pdb; pdb.set_trace()
         if len(self.lineup) <= self.my_team_bldr.max_players():
             for plyr in self.bench:
                 try:
@@ -407,7 +406,6 @@ class ManagerBot:
                 self.initial_fit(stats, pos_type)
 
     def initial_fit(self, categories, pos_type):
-        import pdb; pdb.set_trace()
         selector = roster.PlayerSelector(self.ppool)
         selector.rank(categories)
         ids_in_roster = [e['player_id'] for e in self.lineup]
@@ -577,6 +575,52 @@ class ManagerBot:
             opp_team_key = self.lg.team_key()
 
         self.pick_opponent(opp_team_key)
+
+    def evaluate_trades(self, dry_run, verbose):
+        """
+        Find any proposed trades against my team and evaluate them.
+
+        :param dry_run: True if we will evaluate the trades but not send the
+            accept or reject through to Yahoo.
+        :param verbose: If true, we will print details to the console
+        :return: Number of trades evaluated
+        """
+        trades = self.tm.proposed_trades()
+        self.logger.info(trades)
+        # We don't evaluate trades that we sent out.
+        actionable_trades = [tr for tr in trades
+                             if tr['tradee_team_key'] == self.tm.team_key]
+        self.logger.info(actionable_trades)
+
+        if len(actionable_trades) > 0:
+            for trade in actionable_trades:
+                ev = self._evaluate_trade(trade)
+                if verbose:
+                    self._print_trade(trade, ev)
+                self.logger.warn("Accept={}    {}".format(ev, trade))
+                if not dry_run:
+                    if ev:
+                        self.tm.accept_trade(trade['transaction_key'])
+                    else:
+                        self.tm.reject_trade(trade['transaction_key'])
+        return len(actionable_trades)
+
+    def _evaluate_trade(self, trade):
+        """
+        Evaluate a single trade
+
+        :return: True if trade should be accepted.  False otherwise.
+        """
+        return False
+
+    def _print_trade(self, trade, ev):
+        print("\nSending")
+        for plyr in trade['trader_players']:
+            print("  {}".format(plyr['name']))
+        print("for your")
+        for plyr in trade['tradee_players']:
+            print("  {}".format(plyr['name']))
+        print("\nTrade should be {}".format("accepted" if ev else "rejected"))
 
     def _get_team_name(self, lg, team_key):
         for team in lg.teams():
