@@ -29,7 +29,7 @@ class ScoreComparer:
         self.scorer = scorer
         self.opp_sum = None
         self.stdev_cap = int(cfg['Scorer']['stdevCap'])
-        self.stdevs = self._compute_stdevs(lg_lineups)
+        self.stdevs = self._compute_agg(lg_lineups, 'std')
 
     def set_opponent(self, opp_sum):
         """
@@ -42,8 +42,6 @@ class ScoreComparer:
     def compute_score(self, lineup):
         """
         Calculate a lineup score by comparing it against the standard devs
-
-        A call to compute_stdevs should already have been made
 
         :param lineup: Lineup to compute standard deviation from
         :return: Standard deviation score
@@ -76,15 +74,12 @@ class ScoreComparer:
             print("{} - {:.3f}".format(cat, val))
         print("")
 
-    def _compute_stdevs(self, lineups):
+    def _compute_agg(self, lineups, agg):
         """
-        Compute the standard deviations of each of the categories
+        Compute an aggregation of each of the categories
 
-        The standard deviation is computed from a list of lineups that is
-        passed in.
-
-        :param lineups: Lineups to compute the standard deviations from
-        :return: Standard deviations for each category
+        :param lineups: Lineups to compute the aggregation on
+        :return: Aggregation compuation for each category
         :rtype: DataFrame
         """
         scores = pd.DataFrame()
@@ -95,8 +90,7 @@ class ScoreComparer:
                 df = pd.DataFrame(data=lineup, columns=lineup[0].index)
             score_sum = self.scorer.summarize(df)
             scores = scores.append(score_sum, ignore_index=True)
-        return scores.std()
-
+        return scores.agg([agg])
 
 
 class ManagerBot:
@@ -570,7 +564,10 @@ class ManagerBot:
 
         :return: True if trade should be accepted.  False otherwise.
         """
-        return False
+        if self.cfg['Trade'].getboolean('autoReject'):
+            return False
+        else:
+            assert(False), "No support for evaluating trades"
 
     def _print_trade(self, trade, ev):
         print("\nSending")
