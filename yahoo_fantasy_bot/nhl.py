@@ -91,21 +91,7 @@ class Builder:
 
 
 def init_prediction_builder(lg, cfg):
-    bldr = None
-    cache = utils.LeagueCache(cfg)
-    fn = cache.prediction_builder_cache_file()
-    if os.path.exists(fn):
-        with open(fn, "rb") as f:
-            bldr = pickle.load(f)
-        if datetime.datetime.now() > bldr.expiry:
-            bldr = None
-
-    if bldr is None:
-        bldr = Builder(lg, "espn.skaters.proj.csv", "espn.goalies.proj.csv")
-        bldr.expiry = datetime.datetime.now() + datetime.timedelta(
-            minutes=int(cfg['Cache']['predictionBuilderExpiry']))
-
-    return bldr
+    return Builder(lg, "espn.skaters.proj.csv", "espn.goalies.proj.csv")
 
 
 class PlayerPrinter:

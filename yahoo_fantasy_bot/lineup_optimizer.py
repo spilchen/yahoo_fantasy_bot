@@ -40,7 +40,7 @@ def optimize_single_player_at_a_time(cfg, score_comparer, roster_bldr,
         raise KeyError("Categories are not valid: {}".format(categories))
 
     found_better = False
-    score_comparer.update_score(lineup)
+    best_score = score_comparer.compute_score(lineup)
     for i, plyr in enumerate(selector.select()):
         if i+1 > int(cfg['LineupOptimizer']['iterations']):
             break
@@ -51,11 +51,12 @@ def optimize_single_player_at_a_time(cfg, score_comparer, roster_bldr,
         plyr['selected_position'] = np.nan
         best_lineup = copy.deepcopy(lineup)
         for potential_lineup in roster_bldr.enumerate_fit(best_lineup, plyr):
-            if score_comparer.compare_lineup(potential_lineup):
+            new_score = score_comparer.compute_score(potential_lineup)
+            if new_score > best_score:
                 print("  *** Found better lineup when including {}"
                       .format(plyr['name']))
                 lineup = copy.deepcopy(potential_lineup)
-                score_comparer.update_score(lineup)
+                best_score = new_score
                 found_better = True
     return lineup if found_better else None
 
@@ -196,8 +197,6 @@ class GeneticAlgorithm:
         self._generate_lineups(max_lineups, gen_type='pct_own')
         while len(self.population) < max_lineups:
             self._generate_lineups(max_lineups, gen_type='random')
-        self.score_comparer.compute_stddevs(
-            [e['players'] for e in self.population])
         self._score_population()
         self._log_population()
 
@@ -262,7 +261,7 @@ class GeneticAlgorithm:
         for l in self.population:
             if l['score'] is None:
                 l['score'] = \
-                    self.score_comparer.compute_score_as_stdev(l['players'])
+                    self.score_comparer.compute_score(l['players'])
 
     def _remove_from_pop(self, lineup):
         for i, p in enumerate(self.population):
@@ -344,7 +343,7 @@ class GeneticAlgorithm:
         offspring = [mates[0], mates[1]]
         for _ in range(int(self.cfg['LineupOptimizer']['numOffspring'])):
             plyrs = self._complete_lineup(ppool, [])
-            score = self.score_comparer.compute_score_as_stdev(plyrs)
+            score = self.score_comparer.compute_score(plyrs)
             offspring.append({'players': plyrs, 'score': score,
                               'id': self._gen_lineup_id(),
                               'sids': self._to_sids(plyrs)})
@@ -428,7 +427,7 @@ class GeneticAlgorithm:
             sids = self._to_sids(new_plyrs)
             if self._is_dup_sids(sids):
                 continue
-            score = self.score_comparer.compute_score_as_stdev(new_plyrs)
+            score = self.score_comparer.compute_score(new_plyrs)
             if score <= lineup['score']:
                 continue
             new_lineup = {"players": new_plyrs, "id": self._gen_lineup_id(),

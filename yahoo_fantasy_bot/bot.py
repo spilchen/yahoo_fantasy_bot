@@ -18,34 +18,65 @@ class ScoreComparer:
     """
     Class that compares the scores of two lineups and computes whether it is
     *better* (in the fantasy sense)
-    """
-    def __init__(self, scorer, opp_sum, lineup):
-        self.scorer = scorer
-        self.opp_sum = opp_sum
-        (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
-            self.compute_score(lineup)
-        self.stddevs = None
 
-    def compare_lineup(self, potential_lineup):
-        better_lineup = False
-        (new_w, new_l, _, new_cat_comp) = self.compute_score(potential_lineup)
-        if self._is_new_score_better(new_w, new_l, new_cat_comp):
-            self.orig_w = new_w
-            self.orig_l = new_l
-            better_lineup = True
-        return better_lineup
+    :param cfg: Configparser object
+    :param scorer: Object that computes scores for the categories
+    :param lg_lineups: All of the lineups in the league.  This is used to
+        compute a standard deviation of all of the stat categories.
+    """
+    def __init__(self, cfg, scorer, lg_lineups):
+        self.cfg = cfg
+        self.scorer = scorer
+        self.opp_sum = None
+        self.stdev_cap = int(cfg['Scorer']['stdevCap'])
+        self.stdevs = self._compute_stdevs(lg_lineups)
+
+    def set_opponent(self, opp_sum):
+        """
+        Set the stat category totals for the opponent
+
+        :param opp_sum: Sum of all of the categories of your opponent
+        """
+        self.opp_sum = opp_sum
 
     def compute_score(self, lineup):
+        """
+        Calculate a lineup score by comparing it against the standard devs
+
+        A call to compute_stdevs should already have been made
+
+        :param lineup: Lineup to compute standard deviation from
+        :return: Standard deviation score
+        """
+        assert(self.opp_sum is not None), "Must call set_opponent() first"
+        assert(self.stdevs is not None)
         df = pd.DataFrame(data=lineup, columns=lineup[0].index)
-        my_sum = self.scorer.summarize(df)
-        (w, l, cat_comp) = self._compare_scores(my_sum, self.opp_sum)
-        return (w, l, my_sum, cat_comp)
+        score_sum = self.scorer.summarize(df)
+        stddev_score = 0
+        for (c_myname, c_myval), (c_opname, c_opval) in \
+                zip(score_sum.items(), self.opp_sum.items()):
+            assert(c_myname == c_opname)
+            c_stdev = self.stdevs[c_myname]
+            v = (c_myval - c_opval) / c_stdev
+            # Cap the value at a multiple of the standard deviation.  We do
+            # this because we don't want to favour lineups that simply own
+            # a category.  A few standard deviation is enough to provide a
+            # cushion.  It also allows you to punt a caategory, if you don't
+            # do well in a category, and you are going to lose, the down side
+            # is capped.
+            v = min(v, self.stdev_cap * c_stdev)
+            if not self.scorer.is_highest_better(c_myname):
+                v = v * -1
+            stddev_score += v
+        return stddev_score
 
-    def update_score(self, lineup):
-        (self.orig_w, self.orig_l, _, self.orig_cat_comp) = \
-            self.compute_score(lineup)
+    def print_stdev(self):
+        print("Standard deviations for each category:")
+        for cat, val in self.stdevs.iteritems():
+            print("{} - {:.3f}".format(cat, val))
+        print("")
 
-    def compute_stddevs(self, lineups):
+    def _compute_stdevs(self, lineups):
         """
         Compute the standard deviations of each of the categories
 
@@ -53,104 +84,19 @@ class ScoreComparer:
         passed in.
 
         :param lineups: Lineups to compute the standard deviations from
+        :return: Standard deviations for each category
+        :rtype: DataFrame
         """
         scores = pd.DataFrame()
         for lineup in lineups:
-            df = pd.DataFrame(data=lineup, columns=lineup[0].index)
+            if type(lineup) is pd.DataFrame:
+                df = pd.DataFrame(data=lineup, columns=lineup.columns)
+            else:
+                df = pd.DataFrame(data=lineup, columns=lineup[0].index)
             score_sum = self.scorer.summarize(df)
             scores = scores.append(score_sum, ignore_index=True)
-        self.stddevs = scores.std()
+        return scores.std()
 
-    def compute_score_as_stdev(self, lineup):
-        """
-        Calculate a lineup score by comparing it against the standard devs
-
-        A call to compute_stddevs should already have been made
-
-        :param lineup: Lineup to compute standard deviation from
-        :return: Standard deviation score
-        """
-        assert(self.stddevs is not None)
-        df = pd.DataFrame(data=lineup, columns=lineup[0].index)
-        score_sum = self.scorer.summarize(df)
-        stddev_score = 0
-        for (c_myname, c_myval), c_stddev, (c_opname, c_opval) in \
-                zip(score_sum.items(), self.stddevs, self.opp_sum.items()):
-            assert(c_myname == c_opname)
-            v = (c_myval - c_opval) / c_stddev
-            if not self.scorer.is_highest_better(c_myname):
-                v = v * -1
-            stddev_score += v
-        return stddev_score
-
-    def _is_new_score_better(self, new_w, new_l, new_cat_comp):
-        if self.orig_w + self.orig_l > 0:
-            orig_pct = self.orig_w / (self.orig_w + self.orig_l)
-        else:
-            orig_pct = 0.5
-
-        if new_w + new_l > 0:
-            new_pct = new_w / (new_w + new_l)
-        else:
-            new_pct = 0.5
-
-        # Look for marginal improvements in categories we are tied or losing
-        if math.isclose(orig_pct, new_pct):
-            stat_improvement = 0.0
-            for stat in new_cat_comp.keys():
-                o_comp = self.orig_cat_comp[stat]
-                n_comp = new_cat_comp[stat]
-                if o_comp["outcome"] in ['L', 'T'] and \
-                        n_comp["outcome"] == o_comp["outcome"]:
-                    if math.isclose(o_comp["left"], n_comp["left"]):
-                        pass
-                    else:
-                        stat_factor = 1 if self.scorer.is_highest_better(stat)\
-                            else -1
-                        stat_improvement += (n_comp["left"] - o_comp["left"]) \
-                            / o_comp["left"] * stat_factor
-            return stat_improvement > 0
-        else:
-            return orig_pct < new_pct
-
-    def _compare_scores(self, left, right):
-        """Determine how many points comparing two summarized stats together
-
-        :param left: Summarized stats to compare
-        :type left: Series
-        :param right: Summarized stats to compare
-        :type right: Series
-        :return: Number of wins, number of losses and a category comparison
-        :rtype: Tuple of two ints and a dict
-        """
-        category_compare = {}
-        (win, loss) = (0, 0)
-        for l, r, name in zip(left, right, left.index):
-            if self.scorer.is_counting_stat(name):
-                conv_l = int(l)
-                conv_r = int(r)
-            else:
-                conv_l = round(l, 3)
-                conv_r = round(r, 3)
-            outcome = 'T'
-            if self.scorer.is_highest_better(name):
-                if conv_l > conv_r:
-                    outcome = 'W'
-                elif conv_r > conv_l:
-                    outcome = 'L'
-            else:
-                if conv_l < conv_r:
-                    outcome = 'W'
-                elif conv_r < conv_l:
-                    outcome = 'L'
-            if outcome == 'W':
-                win += 1
-            elif outcome == 'L':
-                loss += 1
-            category_compare[name] = {"left": l, "right": r,
-                                      "outcome": outcome}
-
-        return (win, loss, category_compare)
 
 
 class ManagerBot:
@@ -169,6 +115,8 @@ class ManagerBot:
         self.ppool = None
         Scorer = self._get_scorer_class()
         self.scorer = Scorer(self.cfg)
+        self.score_comparer = ScoreComparer(self.cfg, self.scorer,
+                                            self.fetch_league_lineups())
         Display = self._get_display_class()
         self.display = Display(self.cfg)
         self.blacklist = self._load_blacklist()
@@ -277,17 +225,20 @@ class ManagerBot:
 
     def init_prediction_builder(self):
         """Will load and return the prediction builder"""
-        module = self._get_prediction_module()
-        loader = getattr(module, self.cfg['Prediction']['builderClassLoader'])
-        self.pred_bldr = loader(self.lg, self.cfg)
+        def loader():
+            module = self._get_prediction_module()
+            func = getattr(module,
+                           self.cfg['Prediction']['builderClassLoader'])
+            return func(self.lg, self.cfg)
+
+        expiry = datetime.timedelta(
+            minutes=int(self.cfg['Cache']['predictionBuilderExpiry']))
+        self.pred_bldr = self.tm_cache.load_prediction_builder(expiry, loader)
 
     def save(self):
-        with open(self.tm_cache.lineup_cache_file(), "wb") as f:
-            pickle.dump(self.lineup, f)
-        with open(self.tm_cache.bench_cache_file(), "wb") as f:
-            pickle.dump(self.bench, f)
-        with open(self.lg_cache.prediction_builder_cache_file(), "wb") as f:
-            pickle.dump(self.pred_bldr, f)
+        self.tm_cache.refresh_lineup(self.lineup)
+        self.tm_cache.refresh_bench(self.bench)
+        self.tm_cache.refresh_prediction_builder(self.pred_bldr)
 
     def fetch_cur_lineup(self):
         """Fetch the current lineup as set in Yahoo!"""
@@ -311,31 +262,32 @@ class ManagerBot:
                 rcont, *self.cfg['PredictionNamedArguments'])
 
     def fetch_free_agents(self):
-        free_agents = None
-
-        if os.path.exists(self.lg_cache.free_agents_cache_file()):
-            with open(self.lg_cache.free_agents_cache_file(), "rb") as f:
-                free_agents = pickle.load(f)
-            if datetime.datetime.now() > free_agents["expiry"]:
-                self.logger.info("Free agent cache is stale.  Expires at {}".
-                                 format(free_agents["expiry"]))
-                free_agents = None
-
-        if free_agents is None:
+        def loader():
             self.logger.info("Fetching free agents")
-            free_agents = {}
-            free_agents["players"] = self.lg.free_agents(None)
-            free_agents["expiry"] = datetime.datetime.now() + \
-                datetime.timedelta(
-                    minutes=int(self.cfg['Cache']['freeAgentExpiry']))
+            fa = self.lg.free_agents(None)
             self.logger.info(
                 "Free agents fetch complete.  {} players in pool".
-                format(len(free_agents["players"])))
+                format(len(fa)))
+            return fa
 
-            with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
-                pickle.dump(free_agents, f)
+        expiry = datetime.timedelta(
+            minutes=int(self.cfg['Cache']['freeAgentExpiry']))
+        return self.lg_cache.load_free_agents(expiry, loader)
 
-        return free_agents["players"]
+    def fetch_league_lineups(self):
+        def loader():
+            self.logger.info("Fetching lineups for each team")
+            lineups = []
+            for tm in self.lg.teams():
+                rcont = roster.Container(self.lg,
+                                         self.lg.to_team(tm['team_key']))
+                lineups.append(self.pred_bldr.predict(
+                    rcont, *self.cfg['PredictionNamedArguments']))
+            self.logger.info("All lineups fetched.")
+            return lineups
+
+        return self.lg_cache.load_league_lineup(datetime.timedelta(days=5),
+                                                loader)
 
     def invalidate_free_agents(self, plyrs):
         if os.path.exists(self.lg_cache.free_agents_cache_file()):
@@ -347,7 +299,7 @@ class ManagerBot:
                              format(plyr_ids))
             new_players = [e for e in free_agents["players"]
                            if e['player_id'] not in plyr_ids]
-            free_agents['players'] = new_players
+            free_agents['payload'] = new_players
             with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
@@ -366,19 +318,17 @@ class ManagerBot:
         return (team_name, opp_sum)
 
     def load_lineup(self):
-        if os.path.exists(self.tm_cache.lineup_cache_file()):
-            with open(self.tm_cache.lineup_cache_file(), "rb") as f:
-                self.lineup = pickle.load(f)
-        else:
+        def loader():
             self.lineup = []
             self.fill_empty_spots()
+            return self.lineup
+
+        self.lineup = self.tm_cache.load_lineup(None, loader)
 
     def load_bench(self):
-        if os.path.exists(self.tm_cache.bench_cache_file()):
-            with open(self.tm_cache.bench_cache_file(), "rb") as f:
-                self.bench = pickle.load(f)
-        else:
-            self.pick_bench()
+        def loader():
+            return self.pick_bench()
+        return self.tm_cache.load_bench(None, loader)
 
     def fill_empty_spots_from_bench(self):
         if len(self.lineup) <= self.my_team_bldr.max_players():
@@ -468,9 +418,8 @@ class ManagerBot:
         avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
         avail_plyrs = avail_plyrs[avail_plyrs['status'] == '']
 
-        score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
         optimizer_func = self._get_lineup_optimizer_function()
-        best_lineup = optimizer_func(self.cfg, score_comparer,
+        best_lineup = optimizer_func(self.cfg, self.score_comparer,
                                      self.my_team_bldr, avail_plyrs,
                                      self.lineup)
         if best_lineup:
@@ -482,21 +431,30 @@ class ManagerBot:
         if self.opp_sum is None:
             raise RuntimeError("No opponent selected")
 
-        score_comparer = ScoreComparer(self.scorer, self.opp_sum, self.lineup)
-        (w, l, my_sum, _) = score_comparer.compute_score(self.lineup)
-        print("Against '{}' your roster will score: {} - {}".
-              format(self.opp_team_name, w, l))
+        self.score_comparer.print_stdev()
+
+        df = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
+        my_sum = self.scorer.summarize(df)
+        score = self.score_comparer.compute_score(self.lineup)
+        print("Against '{}' your roster has a score of: {}".
+              format(self.opp_team_name, score))
         print("")
         for stat in my_sum.index:
             if stat in ["ERA", "WHIP"]:
-                if my_sum[stat] < self.opp_sum[stat]:
+                if math.isclose(my_sum[stat], self.opp_sum[stat]):
+                    my_win = "="
+                    opp_win = "="
+                elif my_sum[stat] < self.opp_sum[stat]:
                     my_win = "*"
                     opp_win = ""
                 else:
                     my_win = ""
                     opp_win = "*"
             else:
-                if my_sum[stat] > self.opp_sum[stat]:
+                if math.isclose(my_sum[stat], self.opp_sum[stat]):
+                    my_win = "="
+                    opp_win = "="
+                elif my_sum[stat] > self.opp_sum[stat]:
                     my_win = "*"
                     opp_win = ""
                 else:
@@ -560,6 +518,7 @@ class ManagerBot:
 
     def pick_opponent(self, opp_team_key):
         (self.opp_team_name, self.opp_sum) = self.sum_opponent(opp_team_key)
+        self.score_comparer.set_opponent(self.opp_sum)
 
     def auto_pick_opponent(self):
         edit_wk = self.lg.current_week()
