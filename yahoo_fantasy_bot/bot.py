@@ -54,7 +54,7 @@ class ScoreComparer:
         for (c_myname, c_myval), (c_opname, c_opval) in \
                 zip(score_sum.items(), self.opp_sum.items()):
             assert(c_myname == c_opname)
-            c_stdev = self.stdevs[c_myname]
+            c_stdev = self.stdevs[c_myname].iloc(0)[0]
             v = (c_myval - c_opval) / c_stdev
             # Cap the value at a multiple of the standard deviation.  We do
             # this because we don't want to favour lineups that simply own
@@ -71,7 +71,7 @@ class ScoreComparer:
     def print_stdev(self):
         print("Standard deviations for each category:")
         for cat, val in self.stdevs.iteritems():
-            print("{} - {:.3f}".format(cat, val))
+            print("{} - {:.3f}".format(cat, val.iloc(0)[0]))
         print("")
 
     def _compute_agg(self, lineups, agg):
@@ -291,7 +291,7 @@ class ManagerBot:
             plyr_ids = [e["player_id"] for e in plyrs]
             self.logger.info("Removing player IDs from free agent cache".
                              format(plyr_ids))
-            new_players = [e for e in free_agents["players"]
+            new_players = [e for e in free_agents["payload"]
                            if e['player_id'] not in plyr_ids]
             free_agents['payload'] = new_players
             with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
@@ -314,7 +314,7 @@ class ManagerBot:
     def load_lineup(self):
         def loader():
             self.lineup = []
-            self.fill_empty_spots()
+            self.sync_lineup()
             return self.lineup
 
         self.lineup = self.tm_cache.load_lineup(None, loader)
@@ -322,58 +322,51 @@ class ManagerBot:
     def load_bench(self):
         def loader():
             return self.pick_bench()
-        return self.tm_cache.load_bench(None, loader)
+        self.bench = self.tm_cache.load_bench(None, loader)
+
+    def _set_new_lineup_and_bench(self, new_lineup):
+        new_bench = []
+        new_plyr_ids = [e["player_id"] for e in new_lineup]
+        for plyr in self.lineup:
+            if plyr["player_id"] not in new_plyr_ids:
+                new_bench.append(plyr)
+        assert(len(new_bench) <= int(self.cfg['League']['benchSpots']))
+        self.lineup = new_lineup
+        self.bench = new_bench
 
     def fill_empty_spots_from_bench(self):
-        if len(self.lineup) <= self.my_team_bldr.max_players():
-            for plyr in self.bench:
-                try:
-                    if plyr['status'] != '':
-                        continue
-                    plyr['selected_position'] = np.nan
-                    self.lineup = self.my_team_bldr.fit_if_space(self.lineup,
-                                                                 plyr)
-                except LookupError:
-                    pass
-                if len(self.lineup) == self.my_team_bldr.max_players():
-                    break
+        if len(self.lineup) < self.my_team_bldr.max_players() and \
+                len(self.bench) > 0:
+            optimizer_func = self._get_lineup_optimizer_function()
+            bench_df = pd.DataFrame(data=self.bench,
+                                    columns=self.bench[0].index)
+            new_lineup = optimizer_func(self.cfg, self.score_comparer,
+                                        self.my_team_bldr, bench_df,
+                                        self.lineup)
+            self._set_new_lineup_and_bench(new_lineup)
+
+    def optimize_lineup_from_bench(self):
+        """
+        Optimizes your lineup using just your bench as potential player
+        """
+        if len(self.bench) == 0:
+            return
+
+        optimizer_func = self._get_lineup_optimizer_function()
+        ppool = pd.DataFrame(data=self.bench, columns=self.bench[0].index)
+        ldf = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
+        ppool = ppool.append(ldf, ignore_index=True)
+        new_lineup = optimizer_func(self.cfg, self.score_comparer,
+                                    self.my_team_bldr, ppool, [])
+        self._set_new_lineup_and_bench(new_lineup)
 
     def fill_empty_spots(self):
-        if len(self.lineup) <= self.my_team_bldr.max_players():
-            stat_categories = self.lg.stat_categories()
-            for pos_type in self._get_position_types():
-                stats = []
-                for sc in stat_categories:
-                    if sc['position_type'] == pos_type and \
-                            self._is_predicted_stat(sc['display_name']):
-                        stats.append(sc['display_name'])
-                self.initial_fit(stats, pos_type)
-
-    def initial_fit(self, categories, pos_type):
-        selector = roster.PlayerSelector(self.ppool)
-        selector.rank(categories)
-        ids_in_roster = [e['player_id'] for e in self.lineup]
-        for plyr in selector.select():
-            try:
-                if plyr['name'] in self.blacklist:
-                    continue
-                if plyr['position_type'] != pos_type:
-                    continue
-                if plyr['status'] != '':
-                    continue
-                if plyr['player_id'] in ids_in_roster:
-                    continue
-
-                self.logger.info("Player: {} Positions: {}".
-                                 format(plyr['name'],
-                                        plyr['eligible_positions']))
-
-                plyr['selected_position'] = np.nan
-                self.lineup = self.my_team_bldr.fit_if_space(self.lineup, plyr)
-            except LookupError:
-                pass
-            if len(self.lineup) == self.my_team_bldr.max_players():
-                break
+        if len(self.lineup) < self.my_team_bldr.max_players():
+            optimizer_func = self._get_lineup_optimizer_function()
+            self.lineup = optimizer_func(self.cfg, self.score_comparer,
+                                         self.my_team_bldr,
+                                         self._get_filtered_pool(),
+                                         self.lineup)
 
     def print_roster(self):
         self.display.printRoster(self.lineup, self.bench, self.injury_reserve)
@@ -402,20 +395,32 @@ class ManagerBot:
         self.bench = bench
         self.injury_reserve = ir
 
-    def optimize_lineup(self):
-        # Filter out any players from the lineup as we don't want to consider
-        # them again.
-        indexColumn = self.cfg['Prediction']['indexColumn']
-        lineup_ids = [e[indexColumn] for e in self.lineup]
-        avail_plyrs = self.ppool[~self.ppool[indexColumn].isin(lineup_ids) &
-                                 ~self.ppool['name'].isin(self.blacklist)]
-        avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
-        avail_plyrs = avail_plyrs[avail_plyrs['status'] == '']
+    def _get_filtered_pool(self):
+        """
+        Get a list of players from the pool filtered on common criteria
 
+        :return: Player pool
+        :rtype: DataFrame
+        """
+        avail_plyrs = self.ppool[~self.ppool['name'].isin(self.blacklist)]
+        avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
+        return avail_plyrs[avail_plyrs['status'] == '']
+
+    def optimize_lineup_from_free_agents(self):
+        """
+        Optimize your lineup using all of your players plus free agents
+        """
         optimizer_func = self._get_lineup_optimizer_function()
+
+        locked_plyrs = []
+        thres = int(self.cfg['LineupOptimizer']['lockPlayersAbovePctOwn'])
+        for plyr in self.lineup:
+            if plyr['percent_owned'] >= thres:
+                locked_plyrs.append(plyr)
+
         best_lineup = optimizer_func(self.cfg, self.score_comparer,
-                                     self.my_team_bldr, avail_plyrs,
-                                     self.lineup)
+                                     self.my_team_bldr,
+                                     self._get_filtered_pool(), locked_plyrs)
         if best_lineup:
             self.lineup = copy.deepcopy(best_lineup)
             self.pick_bench()
@@ -471,27 +476,35 @@ class ManagerBot:
         raise LookupError("Could not find player: " + name)
 
     def swap_player(self, plyr_name_del, plyr_name_add):
-        plyr_add_df = self.ppool[self.ppool['name'] == plyr_name_add]
-        if(len(plyr_add_df.index) == 0):
-            raise LookupError("Could not find player in pool: {}".format(
-                plyr_name_add))
-        if(len(plyr_add_df.index) > 1):
-            raise LookupError("Found more than one player!: {}".format(
-                plyr_name_add))
-        plyr_add = plyr_add_df.iloc(0)[0]
+        if plyr_name_add:
+            plyr_add_df = self.ppool[self.ppool['name'] == plyr_name_add]
+            if(len(plyr_add_df.index) == 0):
+                raise LookupError("Could not find player in pool: {}".format(
+                    plyr_name_add))
+            if(len(plyr_add_df.index) > 1):
+                raise LookupError("Found more than one player!: {}".format(
+                    plyr_name_add))
+            plyr_add = plyr_add_df.iloc(0)[0]
+        else:
+            plyr_add = None
 
         idx = self.find_in_lineup(plyr_name_del)
         plyr_del = self.lineup[idx]
         assert(type(plyr_del.selected_position) == str)
-        if plyr_del.selected_position not in plyr_add['eligible_positions']:
+        if plyr_add and plyr_del.selected_position not in \
+                plyr_add['eligible_positions']:
             raise ValueError("Position {} is not a valid position for {}: {}".
                              format(plyr_del.selected_position,
                                     plyr_add['name'],
                                     plyr_add['eligible_positions']))
 
-        plyr_add['selected_position'] = plyr_del['selected_position']
+        if plyr_add:
+            plyr_add['selected_position'] = plyr_del['selected_position']
         plyr_del['selected_position'] = np.nan
-        self.lineup[idx] = plyr_add
+        if plyr_add:
+            self.lineup[idx] = plyr_add
+        else:
+            del(self.lineup[idx])
         self.pick_bench()
 
     def apply_roster_moves(self, dry_run):

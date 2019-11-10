@@ -10,70 +10,15 @@ import random
 from yahoo_fantasy_bot import roster
 
 
-def optimize_single_player_at_a_time(cfg, score_comparer, roster_bldr,
-                                     avail_plyrs, lineup):
-    """
-    Optimize by swapping in a single player to a constructed lineup
-
-    :param cfg: Loaded config object
-    :type cfg: configparser.ConfigParser
-    :param score_comparer: Object that is used to compare two lineups to
-    determine the better one
-    :type score_comparer: bot.ScoreComparer
-    :param roster_bldr: Object that is used to construct a roster given the
-    constraints of the league
-    :type roster_bldr: roster.Builder
-    :param avail_plyrs: Pool of available players that can be included in
-    a lineup
-    :type avail_plyrs: DataFrame
-    :param lineup: The currently constructed lineup
-    :type lineup: list
-    :return: If a better lineup was found, this will return it.  If no better
-    lineup was found this returns None
-    :rtype: list or None
-    """
-    selector = roster.PlayerSelector(avail_plyrs)
-    categories = cfg['LineupOptimizer']['categories'].split(",")
-    try:
-        selector.rank(categories)
-    except KeyError:
-        raise KeyError("Categories are not valid: {}".format(categories))
-
-    found_better = False
-    best_score = score_comparer.compute_score(lineup)
-    for i, plyr in enumerate(selector.select()):
-        if i+1 > int(cfg['LineupOptimizer']['iterations']):
-            break
-
-        print("Player: {} Positions: {}".
-              format(plyr['name'], plyr['eligible_positions']))
-
-        plyr['selected_position'] = np.nan
-        best_lineup = copy.deepcopy(lineup)
-        for potential_lineup in roster_bldr.enumerate_fit(best_lineup, plyr):
-            new_score = score_comparer.compute_score(potential_lineup)
-            if new_score > best_score:
-                print("  *** Found better lineup when including {}"
-                      .format(plyr['name']))
-                lineup = copy.deepcopy(potential_lineup)
-                best_score = new_score
-                found_better = True
-    return lineup if found_better else None
-
-
 def optimize_with_genetic_algorithm(cfg, score_comparer, roster_bldr,
-                                    avail_plyrs, lineup):
+                                    avail_plyrs, locked_plyrs):
     """
     Loader for the GeneticAlgorithm class
 
     See GeneticAlgorithm.__init__ for parameter type descriptions.
     """
-    for plyr in lineup:
-        if plyr['status'] != '':
-            continue
-        avail_plyrs = avail_plyrs.append(plyr, ignore_index=True)
     algo = GeneticAlgorithm(cfg, score_comparer, roster_bldr, avail_plyrs,
-                            lineup)
+                            locked_plyrs)
     generations = int(cfg['LineupOptimizer']['generations']) \
         if 'generations' in cfg['LineupOptimizer'] else 100
     return algo.run(generations)
@@ -108,19 +53,22 @@ class GeneticAlgorithm:
     :param avail_plyrs: Pool of available players that can be included in
     a lineup
     :type avail_plyrs: DataFrame
-    :param lineup: The currently constructed lineup
-    :type lineup: list
+    :param locked_plyrs: Players that must exist in the optimized lineup
+    :type locked_plyrs: list
     :return: If a better lineup was found, this will return it.  If no better
     lineup was found this returns None
     :rtype: list or None
     """
-    def __init__(self, cfg, score_comparer, roster_bldr, avail_plyrs, lineup):
+    def __init__(self, cfg, score_comparer, roster_bldr, avail_plyrs,
+                 locked_plyrs):
         self.cfg = cfg
+        self.logger = logging.getLogger()
         self.score_comparer = score_comparer
         self.roster_bldr = roster_bldr
         self.ppool = avail_plyrs
         self.population = []
-        self.logger = logging.getLogger()
+        self.locked_ids = [e["player_id"] for e in locked_plyrs]
+        self.seed_lineup = self._generate_seed_lineup(locked_plyrs)
         self.last_lineup_id = 0
         self.pbar = None
 
@@ -194,26 +142,46 @@ class GeneticAlgorithm:
     def _init_population(self):
         max_lineups = int(self.cfg['LineupOptimizer']['initialPopulationSize'])
         self.population = []
-        self._generate_lineups(max_lineups, gen_type='pct_own')
-        while len(self.population) < max_lineups:
-            self._generate_lineups(max_lineups, gen_type='random')
-        self._score_population()
+
+        selector = self._gen_player_selector(gen_type='pct_own')
+        self._generate_lineups(max_lineups, selector)
+
+        selector = self._gen_player_selector(gen_type='random')
+        for _ in range(max_lineups*2):
+            if len(self.population) >= max_lineups:
+                break
+            self._generate_lineups(max_lineups, selector)
+
         self._log_population()
 
-    def _generate_lineups(self, max_lineups, gen_type='pct_own'):
+    def _generate_seed_lineup(self, locked_plyrs):
         """
-        Create lineups for initial population
+        Generate an initial lineup of all of the locked players
 
-        New lineups will be added to self.population.
-
-        :param gen_type: Specify how to generate the lineup.  Acceptable values
-        are 'pct_own' and 'random'.  'pct_own' will pick lineups with
-        preference to the players who have the highest percent owned.  'random'
-        will generate totally random lineups.
-        :param max_lineups: The maximum number of lineups to have in
-        self.population
+        :return: Initial seed lineup
+        :rtype: list
         """
-        assert(len(self.population) < max_lineups)
+        lineup = []
+        for plyr in locked_plyrs:
+            try:
+                lineup = self.roster_bldr.fit_if_space(lineup, plyr)
+            except LookupError:
+                assert(False), \
+                    "Initial set of locked players cannot fit into a single " \
+                    "lineup.  Lineup has {} players already.  Trying to fit "\
+                    "{} players.".format(len(lineup), len(locked_plyrs))
+        return lineup
+
+    def _gen_player_selector(self, gen_type='pct_own'):
+        """
+        Generate a player selector for a given generation type
+
+        :param gen_type: Specify how to sort the player selector.  Acceptable
+            values are 'pct_own' and 'random'.  'pct_own' will pick lineups
+            with preference to the players who have the highest percent owned.
+            'random' will generate totally random lineups.
+        :return: built PlayerSelector
+        """
         selector = roster.PlayerSelector(self.ppool)
         if gen_type == 'pct_own':
             selector.set_descending_categories([])
@@ -221,47 +189,71 @@ class GeneticAlgorithm:
         else:
             assert(gen_type == 'random')
             selector.shuffle()
+        return selector
+
+    def _add_completed_lineup(self, lineup):
+        assert(len(lineup) == self.roster_bldr.max_players())
+        sids = self._to_sids(lineup)
+        if self._is_dup_sids(sids):
+            return
+        score = self.score_comparer.compute_score(lineup),
+        self.population.append({'players': lineup,
+                                'score': score,
+                                'id': self._gen_lineup_id(),
+                                'sids': sids})
+
+    def _fit_plyr_to_lineup(self, plyr, lineup):
+        """
+        Tries to fit the player to the lineup.
+
+        If the lineup becomes full, then it will be add to the population.
+
+        :param plyr: Player attempt to add
+        :param lineup: Current lineup
+        :return: True if player was added
+        """
+        fit = False
+        try:
+            assert(plyr['status'] == '')
+            plyr['selected_position'] = np.nan
+            lineup = self.roster_bldr.fit_if_space(lineup, plyr)
+            fit = True
+
+            if len(lineup) == self.roster_bldr.max_players():
+                self._add_completed_lineup(lineup)
+        except LookupError:
+            pass   # Try fitting in the next lineup
+        return fit
+
+    def _generate_lineups(self, max_lineups, selector):
+        """
+        Create lineups for initial population
+
+        New lineups will be added to self.population.
+
+        :param max_lineups: The maximum number of lineups to have in
+        :param selector: PlayerSelector to use to pick players to fill lineups
+        self.population
+        """
+        assert(len(self.population) < max_lineups)
         lineups = []
-        lineups.append([])
         for plyr in selector.select():
             fit = False
+            if len(self.population) == max_lineups:
+                return
+            if plyr['player_id'] in self.locked_ids:
+                continue
             for lineup in lineups:
                 if len(lineup) == self.roster_bldr.max_players():
                     continue
-                try:
-                    assert(plyr['status'] == '')
-                    plyr['selected_position'] = np.nan
-                    lineup = self.roster_bldr.fit_if_space(lineup, plyr)
-                    fit = True
-
-                    # If lineup is no complete add it to the population
-                    if len(lineup) == self.roster_bldr.max_players():
-                        sids = self._to_sids(lineup)
-                        if self._is_dup_sids(sids):
-                            continue
-                        self.population.append({'players': lineup,
-                                                'score': None,
-                                                'id': self._gen_lineup_id(),
-                                                'sids': sids})
-                        if len(self.population) == max_lineups:
-                            return
-
-                    break   # Stop trying to find a lineup for plyr
-                except LookupError:
-                    pass   # Try fitting in the next lineup
+                fit = self._fit_plyr_to_lineup(plyr, lineup)
+                if fit:
+                    break
 
             if not fit:
-                lineup = self.roster_bldr.fit_if_space([], plyr)
+                lineup = copy.deepcopy(self.seed_lineup)
                 lineups.append(lineup)
-
-    def _score_population(self):
-        """
-        Compute a score for each lineup in the population that
-        """
-        for l in self.population:
-            if l['score'] is None:
-                l['score'] = \
-                    self.score_comparer.compute_score(l['players'])
+                self._fit_plyr_to_lineup(plyr, lineup)
 
     def _remove_from_pop(self, lineup):
         for i, p in enumerate(self.population):
@@ -293,12 +285,13 @@ class GeneticAlgorithm:
         selectionStyle config parameter.
         """
         mates = self._pick_lineups()
-        self._remove_from_pop(mates[0])
-        self._remove_from_pop(mates[1])
-        offspring = self._produce_offspring(mates)
-        for i, lineup in enumerate(offspring):
-            self._log_lineup("Offspring " + str(i), lineup)
-        self.population = self.population + offspring
+        if mates:
+            self._remove_from_pop(mates[0])
+            self._remove_from_pop(mates[1])
+            offspring = self._produce_offspring(mates)
+            for i, lineup in enumerate(offspring):
+                self._log_lineup("Offspring " + str(i), lineup)
+            self.population = self.population + offspring
 
     def _pick_lineups(self):
         """
@@ -307,7 +300,7 @@ class GeneticAlgorithm:
         This uses the tournament selection process where random set of lineups
         are selected, then go through a tournament to pick the top number.
 
-        :return: List of lineups
+        :return: List of lineups.  Return None if not enough lineups exists.
         """
         k = int(self.cfg['LineupOptimizer']['tournamentParticipants'])
         if k > len(self.population):
@@ -315,6 +308,9 @@ class GeneticAlgorithm:
             k = 2**pw
         assert(math.log(k, 2).is_integer()), "Must be a power of 2"
         participants = random.sample(self.population, k=k)
+        if len(participants) == 1:
+            return None
+
         rounds = math.log(k, 2) - 1
         for _ in range(int(rounds)):
             next_participants = []
@@ -342,7 +338,7 @@ class GeneticAlgorithm:
         ppool = self._create_player_pool(mates)
         offspring = [mates[0], mates[1]]
         for _ in range(int(self.cfg['LineupOptimizer']['numOffspring'])):
-            plyrs = self._complete_lineup(ppool, [])
+            plyrs = self._complete_lineup(ppool, self.seed_lineup)
             score = self.score_comparer.compute_score(plyrs)
             offspring.append({'players': plyrs, 'score': score,
                               'id': self._gen_lineup_id(),
@@ -453,7 +449,10 @@ class GeneticAlgorithm:
         mutates = []
         plyrs = lineup['players']
         for i, plyr in enumerate(plyrs):
-            if random.randint(0, 100) <= mutate_pct:
+            # Never mutate the locked IDs since we want them to stay
+            # in the lineup.
+            if plyr['player_id'] not in self.locked_ids and \
+                    random.randint(0, 100) <= mutate_pct:
                 self.logger.info("Mutating player {} in lineup {}".
                                  format(plyr['name'], lineup['id']))
                 mutates.append(i)

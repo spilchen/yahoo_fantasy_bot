@@ -17,7 +17,8 @@ class Driver:
                      "R": self._print_roster,
                      "S": self._show_score,
                      "F": self._fill_empty_roster_spots,
-                     "O": self._optimize_lineup,
+                     "O": self._optimize_lineup_from_fa,
+                     "N": self._optimize_lineup_from_bench,
                      "I": self._sync_lineup_with_yahoo,
                      "M": self._manual_select_players,
                      "T": self._show_two_start_pitchers,
@@ -47,7 +48,8 @@ class Driver:
         print("R - Show roster")
         print("S - Show sumarized scores")
         print("F - Fill empty roster spots")
-        print("O - Optimizer lineup")
+        print("O - Optimize lineup from free agents")
+        print("N - Optimize lineup from bench")
         print("I - Reinit local lineup with Yahoo!")
         print("M - Manual select players")
         print("T - Show two start pitchers")
@@ -105,11 +107,14 @@ class Driver:
         self.bot.fill_empty_spots()
         self.bot.pick_bench()
 
-    def _optimize_lineup(self):
+    def _optimize_lineup_from_fa(self):
         try:
-            self.bot.optimize_lineup()
+            self.bot.optimize_lineup_from_free_agents()
         except KeyError as e:
             print(e)
+
+    def _optimize_lineup_from_bench(self):
+        self.bot.optimize_lineup_from_bench()
 
     def _sync_lineup_with_yahoo(self):
         self.bot.sync_lineup()
@@ -120,21 +125,23 @@ class Driver:
         old_score = self.bot.score_comparer.compute_score(self.bot.lineup)
         print("Enter the name of the player to remove: ")
         pname_rem = input().rstrip()
-        print("Enter the name of the player to add: ")
+        print("Enter the name of the player to add (leave blank for none): ")
         pname_add = input().rstrip()
 
         try:
-            self.bot.swap_player(pname_rem, pname_add)
+            self.bot.swap_player(pname_rem,
+                                 pname_add if len(pname_add) > 0 else None)
         except (LookupError, ValueError) as e:
             print(e)
             return
 
         self.bot.print_roster()
-        self.bot.show_score()
-        new_score = self.bot.score_comparer.compute_score(self.bot.lineup)
-        improved = new_score > old_score
-        print("This lineup has {}".format("improved" if improved
-                                          else "declined"))
+        if pname_add:
+            self.bot.show_score()
+            new_score = self.bot.score_comparer.compute_score(self.bot.lineup)
+            improved = new_score > old_score
+            print("This lineup has {}".format("improved" if improved
+                                              else "declined"))
 
     def _show_two_start_pitchers(self):
         if "WK_GS" in self.bot.ppool.columns:
