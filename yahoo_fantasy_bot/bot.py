@@ -667,6 +667,8 @@ class RosterChanger:
     def apply(self):
         self._calc_player_drops()
         self._calc_player_adds()
+        # Need to drop players first in case the person on IR isn't dropped
+        self._apply_player_drops()
         self._apply_ir_moves()
         self._apply_player_adds_and_drops()
         self._apply_position_selector()
@@ -685,6 +687,13 @@ class RosterChanger:
         for plyr in self.lineup + self.bench:
             if plyr['player_id'] not in self.orig_roster_ids:
                 self.adds.append(plyr)
+
+    def _apply_player_drops(self):
+        while len(self.drops) > len(self.adds):
+            plyr = self.drops.pop()
+            print("Drop " + plyr['name'])
+            if not self.dry_run:
+                self.tm.drop_player(plyr['player_id'])
 
     def _apply_player_adds_and_drops(self):
         while len(self.drops) != len(self.adds):
