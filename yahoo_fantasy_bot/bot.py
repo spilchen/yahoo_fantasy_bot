@@ -331,6 +331,9 @@ class ManagerBot:
         for plyr in self.lineup:
             if plyr["player_id"] not in new_plyr_ids:
                 new_bench.append(plyr)
+        for plyr in self.bench:
+            if plyr["player_id"] not in new_plyr_ids:
+                new_bench.append(plyr)
         assert(len(new_bench) <= int(self.cfg['League']['benchSpots']))
         self.lineup = new_lineup
         self.bench = new_bench
