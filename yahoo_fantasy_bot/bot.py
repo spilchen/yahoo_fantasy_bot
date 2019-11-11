@@ -109,8 +109,6 @@ class ManagerBot:
         self.ppool = None
         Scorer = self._get_scorer_class()
         self.scorer = Scorer(self.cfg)
-        self.score_comparer = ScoreComparer(self.cfg, self.scorer,
-                                            self.fetch_league_lineups())
         Display = self._get_display_class()
         self.display = Display(self.cfg)
         self.blacklist = self._load_blacklist()
@@ -121,6 +119,8 @@ class ManagerBot:
         self.opp_team_name = None
 
         self.init_prediction_builder()
+        self.score_comparer = ScoreComparer(self.cfg, self.scorer,
+                                            self.fetch_league_lineups())
         self.fetch_player_pool()
         self.load_lineup()
         self.load_bench()
@@ -152,7 +152,8 @@ class ManagerBot:
         for plyr in top_owners.iterrows():
             p = plyr[1]
             if p['name'] not in lineup_names:
-                self.logger.info("Adding {} to bench...".format(p['name']))
+                self.logger.info("Adding {} to bench ({}%)...".format(
+                    p['name'], p['percent_owned']))
                 self.bench.append(p)
                 if len(self.bench) == bench_spots:
                     break
@@ -273,8 +274,8 @@ class ManagerBot:
             self.logger.info("Fetching lineups for each team")
             lineups = []
             for tm in self.lg.teams():
-                rcont = roster.Container(self.lg,
-                                         self.lg.to_team(tm['team_key']))
+                tm = self.lg.to_team(tm['team_key'])
+                rcont = roster.Container(self.lg, tm)
                 lineups.append(self.pred_bldr.predict(
                     rcont, *self.cfg['PredictionNamedArguments']))
             self.logger.info("All lineups fetched.")
@@ -343,7 +344,8 @@ class ManagerBot:
             new_lineup = optimizer_func(self.cfg, self.score_comparer,
                                         self.my_team_bldr, bench_df,
                                         self.lineup)
-            self._set_new_lineup_and_bench(new_lineup)
+            if new_lineup:
+                self._set_new_lineup_and_bench(new_lineup)
 
     def optimize_lineup_from_bench(self):
         """
@@ -356,17 +358,20 @@ class ManagerBot:
         ppool = pd.DataFrame(data=self.bench, columns=self.bench[0].index)
         ldf = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
         ppool = ppool.append(ldf, ignore_index=True)
+        ppool = ppool[ppool['status'] == '']
         new_lineup = optimizer_func(self.cfg, self.score_comparer,
                                     self.my_team_bldr, ppool, [])
-        self._set_new_lineup_and_bench(new_lineup)
+        if new_lineup:
+            self._set_new_lineup_and_bench(new_lineup)
 
     def fill_empty_spots(self):
         if len(self.lineup) < self.my_team_bldr.max_players():
             optimizer_func = self._get_lineup_optimizer_function()
-            self.lineup = optimizer_func(self.cfg, self.score_comparer,
-                                         self.my_team_bldr,
-                                         self._get_filtered_pool(),
-                                         self.lineup)
+            new_lineup = optimizer_func(self.cfg, self.score_comparer,
+                                        self.my_team_bldr,
+                                        self._get_filtered_pool(), self.lineup)
+            if new_lineup:
+                self.lineup = new_lineup
 
     def print_roster(self):
         self.display.printRoster(self.lineup, self.bench, self.injury_reserve)

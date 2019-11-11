@@ -84,6 +84,8 @@ class GeneticAlgorithm:
         """
         self._init_progress_bar(generations)
         self._init_population()
+        if len(self.population) == 0:
+            return None
         for generation in range(generations):
             self._update_progress(generation)
             self._mate()

@@ -19,7 +19,9 @@ class Container:
             self.week = lg.current_week() + 1
             if self.week > lg.end_week():
                 raise RuntimeError("Season over no more weeks to predict")
-            self.roster = team.roster(self.week)
+            full_roster = team.roster(self.week)
+            self.roster = [e for e in full_roster
+                           if e["selected_position"] not in ["IR", "BN"]]
         else:
             self.roster = []
 
