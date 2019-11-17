@@ -174,6 +174,10 @@ class ManagerBot:
                     if lp['player_id'] == plyr['player_id']:
                         del self.lineup[idx]
                         break
+                for idx, bp in enumerate(self.bench):
+                    if bp['player_id'] == plyr['player_id']:
+                        del self.bench[idx]
+                        break
 
         if len(ir) < ir_spots:
             self.injury_reserve = ir

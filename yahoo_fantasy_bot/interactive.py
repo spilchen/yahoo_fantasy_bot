@@ -5,7 +5,7 @@ from yahoo_fantasy_bot import bot
 
 class Driver:
     """
-    Driver for the CLI program.  Displays menus and prompts for actions.
+    Interactive driver for the program. Displays menus and prompts for actions.
 
     :param cfg: ConfigParser read in
     """

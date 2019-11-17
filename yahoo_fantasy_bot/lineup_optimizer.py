@@ -138,6 +138,7 @@ class GeneticAlgorithm:
         self.pbar.update(generation + 1)
 
     def _log_population(self):
+        return
         for i, lineup in enumerate(self.population):
             self._log_lineup("Initial Population " + str(i), lineup)
 

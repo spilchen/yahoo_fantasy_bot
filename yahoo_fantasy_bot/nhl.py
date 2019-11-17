@@ -4,10 +4,7 @@ import pandas as pd
 import numpy as np
 from nhl_scraper import nhl
 import logging
-import pickle
-import os
 import datetime
-from yahoo_fantasy_bot import utils
 
 
 logger = logging.getLogger()
@@ -176,6 +173,7 @@ class Scorer:
     """Class that scores rosters that it is given"""
     def __init__(self, cfg):
         self.cfg = cfg
+        self.use_weekly_sched = cfg['Scorer'].getboolean('useWeeklySchedule')
 
     def summarize(self, df):
         """Summarize the dataframe into individual stat categories
@@ -188,16 +186,15 @@ class Scorer:
         temp_stat_cols = ['GA', 'SV']
         stat_cols = ['G', 'A', 'SOG', 'PPP', 'PIM', 'W'] + temp_stat_cols
 
-        res = pd.Series()
-        for stat in stat_cols:
-            val = 0
-            for plyr in df.iterrows():
-                if not np.isnan(plyr[1][stat]):
-                    if self.cfg['Scorer'].getboolean('useWeeklySchedule'):
-                        val += plyr[1][stat] / 82 * plyr[1]['WK_G']
+        res = dict.fromkeys(stat_cols, 0)
+        for plyr in df.iterrows():
+            p = plyr[1]
+            for stat in stat_cols:
+                if not np.isnan(p[stat]):
+                    if self.use_weekly_sched:
+                        res[stat] += p[stat] / 82 * p['WK_G']
                     else:
-                        val += plyr[1][stat]
-            res[stat] = val
+                        res[stat] += p[stat]
 
         # Handle ratio stats
         if res['SV'] > 0:
@@ -206,7 +203,8 @@ class Scorer:
             res['SV%'] = None
 
         # Drop the temporary values used to calculate the ratio stats
-        res = res.drop(index=temp_stat_cols)
+        for stat in temp_stat_cols:
+            del res[stat]
 
         return res
 

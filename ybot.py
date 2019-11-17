@@ -3,13 +3,17 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot.py <cfg_file>
+  ybot.py [-a] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
+
+Options:
+  -a, --auto   Run the program in automated mode.  CAUTION: All lineup
+               decisions are done without any human intervention.
 """
 from docopt import docopt
-from yahoo_fantasy_bot import cli
+from yahoo_fantasy_bot import interactive, automation
 import logging
 import os
 import pandas as pd
@@ -39,5 +43,9 @@ if __name__ == '__main__':
     logging.getLogger('yahoo_oauth').setLevel('WARNING')
     logging.getLogger('chardet.charsetprober').setLevel('WARNING')
 
-    cli = cli.Driver(cfg)
-    cli.run()
+    if args['--auto']:
+        auto = automation.Driver(cfg)
+        auto.run()
+    else:
+        intr = interactive.Driver(cfg)
+        intr.run()
