@@ -92,6 +92,7 @@ class GeneticAlgorithm:
             self._mutate()
         self.logger.info(
             "Ended with population size of {}".format(len(self.population)))
+        print("")   # Go to line after progress bar
         return self._compute_best_lineup()
 
     def _gen_lineup_id(self):

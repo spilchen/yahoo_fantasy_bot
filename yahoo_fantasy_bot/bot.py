@@ -421,6 +421,8 @@ class ManagerBot:
     def optimize_lineup_from_free_agents(self):
         """
         Optimize your lineup using all of your players plus free agents
+
+        :return: True if a new lineup was selected
         """
         optimizer_func = self._get_lineup_optimizer_function()
 
@@ -435,8 +437,7 @@ class ManagerBot:
                                      self._get_filtered_pool(), locked_plyrs)
         if best_lineup:
             self.lineup = copy.deepcopy(best_lineup)
-            self.pick_bench()
-            self.print_roster()
+        return best_lineup is not None
 
     def show_score(self):
         if self.opp_sum is None:

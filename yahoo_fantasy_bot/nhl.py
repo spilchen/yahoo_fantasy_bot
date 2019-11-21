@@ -141,6 +141,7 @@ class PlayerPrinter:
         print("Injury Reserve")
         for plyr in injury_reserve:
             print(plyr['name'])
+        print("")
 
     def printListPlayerHeading(self, pos):
         if pos in ['G']:

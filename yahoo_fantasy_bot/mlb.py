@@ -342,6 +342,7 @@ class PlayerPrinter:
         print("Injury Reserve")
         for plyr in injury_reserve:
             print(plyr['name'])
+        print("")
 
     def printListPlayerHeading(self, pos):
         if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:

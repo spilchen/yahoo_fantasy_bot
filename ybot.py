@@ -3,14 +3,23 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot.py [-a] <cfg_file>
+  ybot.py [-id] [--full=<pct>] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
 
 Options:
-  -a, --auto   Run the program in automated mode.  CAUTION: All lineup
-               decisions are done without any human intervention.
+  -i, --interactive   Run the program in interactive mode.
+  -d, --dry-run       Does a dry run of the roster change.  No roster change
+                      will actually occur.
+  --full=<pct>        Does a full analysis of the entire lineup meaning all
+                      players will be evaluated in an optimized lineup.  This
+                      can potentially add a lot of churn to your lineup.  The
+                      alternative is to just consider optimizing the open slots
+                      in the lineup and the bench.  The value for this option
+                      is a probability that a full optimization will occur.
+                      The value ranges from 0-100.    [Default: 10]
+
 """
 from docopt import docopt
 from yahoo_fantasy_bot import interactive, automation
@@ -40,12 +49,11 @@ if __name__ == '__main__':
         format='%(asctime)s.%(msecs)03d %(module)s-%(funcName)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    logging.getLogger('yahoo_oauth').setLevel('WARNING')
     logging.getLogger('chardet.charsetprober').setLevel('WARNING')
 
-    if args['--auto']:
-        auto = automation.Driver(cfg)
-        auto.run()
-    else:
+    if args['--interactive']:
         intr = interactive.Driver(cfg)
         intr.run()
+    else:
+        auto = automation.Driver(cfg, args['--dry-run'], args['--full'])
+        auto.run()

@@ -109,7 +109,9 @@ class Driver:
 
     def _optimize_lineup_from_fa(self):
         try:
-            self.bot.optimize_lineup_from_free_agents()
+            if self.bot.optimize_lineup_from_free_agents():
+                self.bot.pick_bench()
+                self.bot.print_roster()
         except KeyError as e:
             print(e)
 
