@@ -23,11 +23,11 @@ Options:
 """
 from docopt import docopt
 from yahoo_fantasy_bot import interactive, automation
+import yahoo_oauth
 import logging
 import os
 import pandas as pd
 import configparser
-from imp import reload
 
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -41,7 +41,13 @@ if __name__ == '__main__':
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])
 
-    reload(logging)
+    # Cleanup the logging in yahoo_oauth.  It creates a logger that writes to
+    # stderr.  We are going to recreate the logger so that we can use a handler
+    # that writes to our log file.
+    logging.setLoggerClass(logging.Logger)
+    yahoo_oauth.yahoo_oauth.logger = logging.getLogger('mod_yahoo_oauth')
+    logging.getLogger('mod_yahoo_oauth').setLevel(logging.DEBUG)
+
     logging.basicConfig(
         filename=cfg['Logger']['file'],
         filemode="w",
@@ -49,7 +55,6 @@ if __name__ == '__main__':
         format='%(asctime)s.%(msecs)03d %(module)s-%(funcName)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    logging.getLogger('chardet.charsetprober').setLevel('WARNING')
 
     if args['--interactive']:
         intr = interactive.Driver(cfg)
