@@ -343,16 +343,21 @@ class ManagerBot:
         self.bench = new_bench
 
     def fill_empty_spots_from_bench(self):
-        if len(self.lineup) < self.my_team_bldr.max_players() and \
-                len(self.bench) > 0:
-            optimizer_func = self._get_lineup_optimizer_function()
-            bench_df = pd.DataFrame(data=self.bench,
-                                    columns=self.bench[0].index)
-            new_lineup = optimizer_func(self.cfg, self.score_comparer,
-                                        self.my_team_bldr, bench_df,
-                                        self.lineup)
-            if new_lineup:
-                self._set_new_lineup_and_bench(new_lineup)
+        if len(self.lineup) < self.my_team_bldr.max_players():
+            # Only use bench players that are able to play
+            avail_bench = []
+            for p in self.bench:
+                if p.status == '':
+                    avail_bench.append(p)
+            if len(avail_bench) > 0:
+                optimizer_func = self._get_lineup_optimizer_function()
+                bench_df = pd.DataFrame(data=avail_bench,
+                                        columns=avail_bench[0].index)
+                new_lineup = optimizer_func(self.cfg, self.score_comparer,
+                                            self.my_team_bldr, bench_df,
+                                            self.lineup)
+                if new_lineup:
+                    self._set_new_lineup_and_bench(new_lineup)
 
     def optimize_lineup_from_bench(self):
         """
