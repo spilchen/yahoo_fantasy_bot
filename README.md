@@ -22,7 +22,7 @@ python examples/init_oauth_env.py -k <yahoo_consumer_key> -s <yahoo_secret_key> 
 You need to setup a config file to tune the program for your specific league.  Use sample_config.ini as a guide.
 
 ## Restrictions
-This program will only optimize lineups for teams in a Yahoo! Head-to-Head league.
+This program will only optimize lineups for teams in a Yahoo! Head-to-Head league.  It only works for teams in mlb or nhl leagues.
 
 ## Execution
 Once installed and the config file created, you can run the program via this command:
