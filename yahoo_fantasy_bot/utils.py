@@ -118,3 +118,9 @@ class LeagueCache(CacheBase):
 
     def load_league_lineup(self, expiry, loader):
         return self.run_loader(self.league_lineup_file(), expiry, loader)
+
+    def statics(self):
+        return "{}/league_statics.pkl".format(self.cache_dir)
+
+    def load_statics(self, loader):
+        return self.run_loader(self.statics(), None, loader)

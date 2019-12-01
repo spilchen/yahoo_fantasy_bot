@@ -12,6 +12,10 @@ import pandas as pd
 import numpy as np
 import importlib
 import copy
+import collections
+
+LeagueStatics = collections.namedtuple("LeagueStatics",
+                                       "pos ir_spots bn_spots settings cats")
 
 
 class ScoreComparer:
@@ -104,6 +108,7 @@ class ManagerBot:
         self.tm = self.lg.to_team(self.lg.team_key())
         self.tm_cache = utils.TeamCache(self.cfg, self.lg.team_key())
         self.lg_cache = utils.LeagueCache(self.cfg)
+        self.load_league_statics()
         self.pred_bldr = None
         self.my_team_bldr = self._construct_roster_builder()
         self.ppool = None
@@ -139,8 +144,7 @@ class ManagerBot:
     def pick_bench(self):
         """Pick the bench spots based on the current roster."""
         self.bench = []
-        bench_spots = int(self.cfg['League']['benchSpots'])
-        if bench_spots == 0:
+        if self.lg_statics.bn_spots == 0:
             return
 
         # We'll pick the bench spots by picking players not in your lineup or
@@ -155,14 +159,13 @@ class ManagerBot:
                 self.logger.info("Adding {} to bench ({}%)...".format(
                     p['name'], p['percent_owned']))
                 self.bench.append(p)
-                if len(self.bench) == bench_spots:
+                if len(self.bench) == self.lg_statics.bn_spots:
                     break
 
     def pick_injury_reserve(self):
         """Pick the injury reserve slots"""
         self.injury_reserve = []
-        ir_spots = int(self.cfg['League']['irSpots'])
-        if ir_spots == 0:
+        if self.lg_statics.ir_spots == 0:
             return
 
         ir = []
@@ -179,7 +182,7 @@ class ManagerBot:
                         del self.bench[idx]
                         break
 
-        if len(ir) < ir_spots:
+        if len(ir) < self.lg_statics.ir_spots:
             self.injury_reserve = ir
         else:
             assert(False), "Need to implement pruning of IR"
@@ -221,6 +224,29 @@ class ManagerBot:
 
     def get_blacklist(self):
         return self.blacklist
+
+    def load_league_statics(self):
+        """Load static settings for the league.
+
+        These are settings that don't ever change.  These are cached to a file
+        without any expiry.
+
+        On exit, the self.lg_statics variable will be set.
+        """
+        def loader():
+            pos = self.lg.positions()
+            ir_spots = pos['IR']['count'] if "IR" in pos else 0
+            bn_spots = pos['BN']['count'] if "BN" in pos else 0
+            if "IR" in pos:
+                del pos['IR']
+            if "BN" in pos:
+                del pos['BN']
+            return LeagueStatics(pos=pos,
+                                 ir_spots=ir_spots,
+                                 bn_spots=bn_spots,
+                                 settings=self.lg.settings(),
+                                 cats=self.lg.stat_categories())
+        self.lg_statics = self.lg_cache.load_statics(loader)
 
     def init_prediction_builder(self):
         """Will load and return the prediction builder"""
@@ -338,7 +364,7 @@ class ManagerBot:
         for plyr in self.bench:
             if plyr["player_id"] not in new_plyr_ids:
                 new_bench.append(plyr)
-        assert(len(new_bench) <= int(self.cfg['League']['benchSpots']))
+        assert(len(new_bench) <= self.lg_statics.bn_spots)
         self.lineup = new_lineup
         self.bench = new_bench
 
@@ -648,7 +674,10 @@ class ManagerBot:
         return getattr(module, self.cfg['LineupOptimizer']['function'])
 
     def _construct_roster_builder(self):
-        pos_list = self.cfg['League']['positions'].split(",")
+        pos_list = []
+        for pos_name, pos_detail in self.lg_statics.pos.items():
+            for _ in range(int(pos_detail['count'])):
+                pos_list.append(pos_name)
         return roster.Builder(pos_list)
 
     def _get_position_types(self):
