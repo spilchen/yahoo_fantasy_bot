@@ -23,9 +23,10 @@ class Builder:
     :param goalies_csv: csv file containing goalie predictions
     :type goalies_csv: str
     """
-    def __init__(self, lg, skaters_csv, goalies_csv):
-        skaters = pd.read_csv(skaters_csv, index_col='name')
-        goalies = pd.read_csv(goalies_csv, index_col='name')
+    def __init__(self, lg, cfg, skaters_csv, goalies_csv):
+        pred_cfg = cfg['Prediction']
+        skaters = self._read_csv(pred_cfg, skaters_csv, 'skaters')
+        goalies = self._read_csv(pred_cfg, goalies_csv, 'goalies')
         self.ppool = pd.concat([skaters, goalies], sort=True)
         self.nhl_scraper = nhl.Scraper()
         wk_start_date = lg.edit_date()
@@ -86,14 +87,38 @@ class Builder:
         else:
             return(np.nan, 0)
 
+    def _read_csv(self, pred_cfg, csv_file, prefix):
+        '''Helper to read a csv file based on config settings'''
+        header_parm = prefix + '_csv_header'
+        if header_parm in pred_cfg:
+            header = int(pred_cfg[header_parm])
+        else:
+            header = None
+        if prefix + '_csv_column_names' in pred_cfg:
+            return pd.read_csv(csv_file,
+                               index_col=pred_cfg[prefix + '_csv_index_col'],
+                               names=pred_cfg.getlist(
+                                   prefix + '_csv_column_names'),
+                               header=header)
+        else:
+            return pd.read_csv(csv_file,
+                               index_col=pred_cfg[prefix + '_csv_index_col'],
+                               header=header)
+
 
 def init_prediction_builder(lg, cfg):
-    return Builder(lg, "espn.skaters.proj.csv", "espn.goalies.proj.csv")
+    return Builder(lg,
+                   cfg,
+                   cfg['Prediction']['skaters_csv_file'],
+                   cfg['Prediction']['goalies_csv_file'])
 
 
 class PlayerPrinter:
     def __init__(self, cfg):
-        pass
+        self.cfg = cfg
+        self.cats = self.cfg['League'].getlist('predictedStatCategories')
+        self.skater_cats, self.goalie_cats = \
+            self._separate_categories_by_type()
 
     def printRoster(self, lineup, bench, injury_reserve):
         """Print out the roster to standard out
@@ -110,7 +135,7 @@ class PlayerPrinter:
         first_goalie = True
         print("{:4}: {:20}   "
               "{:4} {}/{}/{}/{}/{}".
-              format('B', '', 'WK_G', 'G', 'A', 'PPP', 'SOG', 'PIM'))
+              format('S', '', 'WK_G', *self.skater_cats))
         for pos in ['C', 'LW', 'RW', 'D', 'G']:
             for plyr in lineup:
                 if plyr['selected_position'] == pos:
@@ -119,20 +144,26 @@ class PlayerPrinter:
                             print("")
                             print("{:4}: {:20}   "
                                   "{:4} {}/{}".
-                                  format('G', '', 'WK_G', 'W', 'SV%'))
+                                  format('G', '', 'WK_G', *self.goalie_cats))
                             first_goalie = False
 
-                        print("{:4}: {:20}   "
-                              "{:4} {:.1f}/{:.3f}".
-                              format(plyr['selected_position'],
-                                     plyr['name'], plyr['WK_G'], plyr['W'],
-                                     plyr['SV%']))
+                        s = "{:4}: {:20}   {:4} ". \
+                            format(plyr['selected_position'],
+                                   plyr['name'], plyr['WK_G'])
+                        for i, c in enumerate(self.goalie_cats):
+                            if i != 0:
+                                s += "/"
+                            s += "{:.3f}".format(plyr[c])
+                        print(s)
                     else:
-                        print("{:4}: {:20}   "
-                              "{:4} {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
-                              format(plyr['selected_position'], plyr['name'],
-                                     plyr['WK_G'], plyr['G'], plyr['A'],
-                                     plyr['PPP'], plyr['SOG'], plyr['PIM']))
+                        s = "{:4}: {:20}   {:4} ". \
+                            format(plyr['selected_position'], plyr['name'],
+                                   plyr['WK_G'])
+                        for i, c in enumerate(self.skater_cats):
+                            if i != 0:
+                                s += "/"
+                            s += "{:.1f}".format(plyr[c])
+                        print(s)
         print("")
         print("Bench")
         for plyr in bench:
@@ -145,23 +176,32 @@ class PlayerPrinter:
 
     def printListPlayerHeading(self, pos):
         if pos in ['G']:
-            print("{:20}   {} {}/{}".format('name', 'WK_G', 'W', 'SV%'))
+            self._print_list_plyr_heading(pos, self.goalie_cats)
         else:
-            print("{:20}   {} {}/{}/{}/{}/{}".format('name', 'WK_G', 'G', 'A',
-                                                     'PPP', 'SOG', 'PIM'))
+            self._print_list_plyr_heading(pos, self.skater_cats)
+
+    def _print_list_plyr_heading(self, pos, cats):
+        header = "{:20}   {} ".format('name', 'WK_G')
+        for i, s in enumerate(cats):
+            if i != 0:
+                header += "/"
+            header += "{}".format(s)
+        print(header)
 
     def printPlayer(self, pos, plyr):
         if pos in ['G']:
-            if self._does_player_have_valid_stats(plyr, ['W', 'SV%']):
-                print("{:20}   {:.1f}/{:.3f}".
-                      format(plyr[1]['name'], plyr[1]['W'], plyr[1]['SV%']))
+            self._print_player(pos, plyr, self.goalie_cats)
         else:
-            if self._does_player_have_valid_stats(plyr, ['G', 'A', 'PPP',
-                                                         'SOG', 'PIM']):
-                print("{:20}   {} {:.1f}/{:.1f}/{:.1f}/{:.1f}/{:.1f}".
-                      format(plyr[1]['name'], plyr[1]['WK_G'], plyr[1]['G'],
-                             plyr[1]['A'], plyr[1]['PPP'], plyr[1]['SOG'],
-                             plyr[1]['PIM']))
+            self._print_player(pos, plyr, self.skater_cats)
+
+    def _print_player(self, pos, plyr, cats):
+        if self._does_player_have_valid_stats(plyr, cats):
+            ln = "{:20}   {} ".format(plyr[1]['name'], plyr[1]['WK_G'])
+            for i, s in enumerate(cats):
+                if i != 0:
+                    ln += "/"
+                ln = "{:.3f}".format(plyr[1][s])
+            print(ln)
 
     def _does_player_have_valid_stats(self, plyr, stats):
         for stat in stats:
@@ -169,11 +209,35 @@ class PlayerPrinter:
                 return False
         return True
 
+    @staticmethod
+    def _get_stat_category(stat):
+        '''Helper to determine if a given stat is for a skater or goalie
+
+        :param stat: Stat to check
+        :return: 'G' for a goalie stat or 'S' for skater stat
+        '''
+        goalie_stats = ['W', 'SV%', 'SHO']
+        if stat in goalie_stats:
+            return 'G'
+        else:
+            return 'S'
+
+    def _separate_categories_by_type(self):
+        skater_cats = []
+        goalie_cats = []
+        for c in self.cats:
+            if self._get_stat_category(c) == 'G':
+                goalie_cats.append(c)
+            else:
+                skater_cats.append(c)
+        return skater_cats, goalie_cats
+
 
 class Scorer:
     """Class that scores rosters that it is given"""
     def __init__(self, cfg):
         self.cfg = cfg
+        self.cats = self.cfg['League'].getlist('predictedStatCategories')
         self.use_weekly_sched = cfg['Scorer'].getboolean('useWeeklySchedule')
 
     def summarize(self, df):
@@ -184,30 +248,43 @@ class Scorer:
         :return: Summarized predictions
         :rtype: Series
         """
-        temp_stat_cols = ['GA', 'SV']
-        stat_cols = ['G', 'A', 'SOG', 'PPP', 'PIM', 'W'] + temp_stat_cols
+        stat_cols = [e for e in self.cats
+                     if self.is_counting_stat(e)]
+        if 'SV%' in self.cats:
+            temp_stat_cols = ['GA', 'SV']
+            stat_cols += temp_stat_cols
 
         res = dict.fromkeys(stat_cols, 0)
         for plyr in df.iterrows():
             p = plyr[1]
             for stat in stat_cols:
-                if not np.isnan(p[stat]):
+                if self.is_numeric(p[stat]):
                     if self.use_weekly_sched:
                         res[stat] += p[stat] / 82 * p['WK_G']
                     else:
                         res[stat] += p[stat]
 
         # Handle ratio stats
-        if res['SV'] > 0:
-            res['SV%'] = res['SV'] / (res['SV'] + res['GA'])
-        else:
-            res['SV%'] = None
+        if 'SV%' in self.cats:
+            if res['SV'] > 0:
+                res['SV%'] = res['SV'] / (res['SV'] + res['GA'])
+            else:
+                res['SV%'] = None
 
         # Drop the temporary values used to calculate the ratio stats
         for stat in temp_stat_cols:
             del res[stat]
 
         return res
+
+    def is_numeric(self, v):
+        '''Helper to check if v is a numeric type we can use in math'''
+        if type(v) is float:
+            return not np.isnan(v)
+        elif type(v) is str:
+            return v.isnumeric()
+        else:
+            assert(False), "Unknown type: " + str(type(v))
 
     def is_counting_stat(self, stat):
         return stat not in ['SV%']

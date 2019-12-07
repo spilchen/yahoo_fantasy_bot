@@ -102,6 +102,12 @@ class TeamCache(CacheBase):
     def refresh_prediction_builder(self, pred_bldr):
         self.refresh_cache_file(self.prediction_builder_file(), pred_bldr)
 
+    def league_lineup_file(self):
+        return "{}/lg_lineups.pkl".format(self.cache_dir)
+
+    def load_league_lineup(self, expiry, loader):
+        return self.run_loader(self.league_lineup_file(), expiry, loader)
+
 
 class LeagueCache(CacheBase):
     def __init__(self, cfg):
@@ -112,12 +118,6 @@ class LeagueCache(CacheBase):
 
     def load_free_agents(self, expiry, loader):
         return self.run_loader(self.free_agents_cache_file(), expiry, loader)
-
-    def league_lineup_file(self):
-        return "{}/lg_lineups.pkl".format(self.cache_dir)
-
-    def load_league_lineup(self, expiry, loader):
-        return self.run_loader(self.league_lineup_file(), expiry, loader)
 
     def statics(self):
         return "{}/league_statics.pkl".format(self.cache_dir)

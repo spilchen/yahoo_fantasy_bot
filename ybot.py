@@ -36,7 +36,9 @@ pd.options.mode.chained_assignment = None  # default='warn'
 if __name__ == '__main__':
     args = docopt(__doc__, version='1.0')
 
-    cfg = configparser.ConfigParser()
+    cfg = configparser.RawConfigParser(
+        converters={'list': lambda x: [i.strip() for i in x.split(',')]}
+    )
     if not os.path.exists(args['<cfg_file>']):
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])

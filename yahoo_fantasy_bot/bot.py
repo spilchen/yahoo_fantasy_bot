@@ -311,7 +311,7 @@ class ManagerBot:
             self.logger.info("All lineups fetched.")
             return lineups
 
-        return self.lg_cache.load_league_lineup(datetime.timedelta(days=5),
+        return self.tm_cache.load_league_lineup(datetime.timedelta(days=5),
                                                 loader)
 
     def invalidate_free_agents(self, plyrs):
@@ -482,7 +482,7 @@ class ManagerBot:
         print("Against '{}' your roster has a score of: {}".
               format(self.opp_team_name, score))
         print("")
-        for stat in my_sum.index:
+        for stat in my_sum.keys():
             if stat in ["ERA", "WHIP"]:
                 if math.isclose(my_sum[stat], self.opp_sum[stat]):
                     my_win = "="
