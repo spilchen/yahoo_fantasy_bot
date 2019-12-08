@@ -200,7 +200,7 @@ class PlayerPrinter:
             for i, s in enumerate(cats):
                 if i != 0:
                     ln += "/"
-                ln = "{:.3f}".format(plyr[1][s])
+                ln += "{:.3f}".format(plyr[1][s])
             print(ln)
 
     def _does_player_have_valid_stats(self, plyr, stats):

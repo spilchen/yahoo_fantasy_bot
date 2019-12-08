@@ -127,8 +127,7 @@ class ManagerBot:
         self.score_comparer = ScoreComparer(self.cfg, self.scorer,
                                             self.fetch_league_lineups())
         self.fetch_player_pool()
-        self.load_lineup()
-        self.load_bench()
+        self.sync_lineup()
         self.pick_injury_reserve()
         self.auto_pick_opponent()
 
@@ -143,9 +142,9 @@ class ManagerBot:
 
     def pick_bench(self):
         """Pick the bench spots based on the current roster."""
-        self.bench = []
+        bench = []
         if self.lg_statics.bn_spots == 0:
-            return
+            return bench
 
         # We'll pick the bench spots by picking players not in your lineup or
         # IR but have the highest ownership %.
@@ -158,9 +157,10 @@ class ManagerBot:
             if p['name'] not in lineup_names:
                 self.logger.info("Adding {} to bench ({}%)...".format(
                     p['name'], p['percent_owned']))
-                self.bench.append(p)
+                bench.append(p)
                 if len(self.bench) == self.lg_statics.bn_spots:
                     break
+        return bench
 
     def pick_injury_reserve(self):
         """Pick the injury reserve slots"""
@@ -261,8 +261,6 @@ class ManagerBot:
         self.pred_bldr = self.tm_cache.load_prediction_builder(expiry, loader)
 
     def save(self):
-        self.tm_cache.refresh_lineup(self.lineup)
-        self.tm_cache.refresh_bench(self.bench)
         self.tm_cache.refresh_prediction_builder(self.pred_bldr)
 
     def fetch_cur_lineup(self):
@@ -341,19 +339,6 @@ class ManagerBot:
                                         *self.cfg['PredictionNamedArguments'])
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)
-
-    def load_lineup(self):
-        def loader():
-            self.lineup = []
-            self.sync_lineup()
-            return self.lineup
-
-        self.lineup = self.tm_cache.load_lineup(None, loader)
-
-    def load_bench(self):
-        def loader():
-            return self.pick_bench()
-        self.bench = self.tm_cache.load_bench(None, loader)
 
     def _set_new_lineup_and_bench(self, new_lineup):
         new_bench = []
@@ -549,7 +534,7 @@ class ManagerBot:
             self.lineup[idx] = plyr_add
         else:
             del(self.lineup[idx])
-        self.pick_bench()
+        self.bench = self.pick_bench()
 
     def apply_roster_moves(self, dry_run):
         """Make roster changes with Yahoo!

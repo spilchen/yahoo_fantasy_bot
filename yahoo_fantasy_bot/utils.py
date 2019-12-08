@@ -72,24 +72,6 @@ class TeamCache(CacheBase):
         super(TeamCache, self).__init__(
             cfg, "{}/{}".format(cfg['Cache']['dir'], team_key))
 
-    def lineup_cache_file(self):
-        return "{}/lineup.pkl".format(self.cache_dir)
-
-    def load_lineup(self, expiry, loader):
-        return self.run_loader(self.lineup_cache_file(), expiry, loader)
-
-    def refresh_lineup(self, lineup):
-        self.refresh_cache_file(self.lineup_cache_file(), lineup)
-
-    def bench_cache_file(self):
-        return "{}/bench.pkl".format(self.cache_dir)
-
-    def load_bench(self, expiry, loader):
-        return self.run_loader(self.bench_cache_file(), expiry, loader)
-
-    def refresh_bench(self, bench):
-        self.refresh_cache_file(self.bench_cache_file(), bench)
-
     def blacklist_cache_file(self):
         return "{}/blacklist.pkl".format(self.cache_dir)
 
