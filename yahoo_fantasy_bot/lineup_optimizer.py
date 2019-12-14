@@ -85,6 +85,8 @@ class GeneticAlgorithm:
         self._init_progress_bar(generations)
         self._init_population()
         if len(self.population) == 0:
+            self.logger.warn(
+                'Could not generate any population. Exiting lineup optimizer')
             return None
         for generation in range(generations):
             self._update_progress(generation)

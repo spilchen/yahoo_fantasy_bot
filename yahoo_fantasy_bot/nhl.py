@@ -51,11 +51,11 @@ class Builder:
         :rtype: DataFrame
         """
         # Produce a DataFrame using preds as the base.  We'll filter out
-        # all of the players not in roster_cont by doing a join of the two
-        # data frames.  This also has the affect of attaching eligible
+        # all of the players not in roster_cont by doing an inner join of the
+        # two data frames.  This also has the affect of attaching eligible
         # positions and Yahoo! player ID from the input player pool.
         my_roster = pd.DataFrame(roster_cont.get_roster())
-        df = my_roster.join(self.ppool, on='name')
+        df = my_roster.join(self.ppool, how='inner', on='name')
 
         # Then we'll figure out the number of games each player is playing
         # this week.  To do this, we'll verify the team each player players
