@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import datetime
 import logging
 import pandas as pd
 import tempfile
@@ -24,6 +25,8 @@ class Yahoo:
         """
         Pull the player stats from Yahoo!
         """
+        self.cfg['Prediction']['source'] == 'yahoo'
+
         print("Downloading player stats from Yahoo...")
         logger.info('Scraping stats for waivers')
         stats = self._scrape_players(self.lg.waivers())
@@ -50,7 +53,21 @@ class Yahoo:
 
     def _scrape_players(self, plyrs):
         ids = [e['player_id'] for e in plyrs]
-        return self.lg.player_stats(ids, 'season')
+        parms = self._get_stat_parms()
+        return self.lg.player_stats(ids, parms['req_type'],
+                                    season=parms['season'])
+
+    def _get_stat_parms(self):
+        src = self.cfg['Prediction']['source']
+        if src == 'yahoo' or src == 'yahoo_season':
+            return {'req_type': 'season', 'season': None}
+        elif src == 'yahoo_lastseason':
+            this_year = datetime.datetime.now().year
+            return {'req_type': 'season', 'season': this_year - 1}
+        elif src == 'yahoo_lastmonth':
+            return {'req_type': 'lastmonth', 'season': None}
+        else:
+            raise RuntimeError('Unknown yahoo source: {}'.format(src))
 
     def _create_csv(self, stats, position_type, fn_suffix):
         filtered_stats = self._filter_stats(stats, position_type)

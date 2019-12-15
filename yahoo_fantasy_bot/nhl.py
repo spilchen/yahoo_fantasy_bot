@@ -109,7 +109,7 @@ def init_prediction_builder(lg, cfg):
         raise RuntimeError(
             "Missing 'source' config attribute in 'Prediction' section")
 
-    if cfg['Prediction']['source'] == 'yahoo':
+    if cfg['Prediction']['source'].startswith('yahoo'):
         ps = source.Yahoo(lg, cfg)
         return Builder(lg, cfg, ps.fetch_csv_details())
     elif cfg['Prediction']['source'] == 'csv':
