@@ -5,6 +5,7 @@ import numpy as np
 from nhl_scraper import nhl
 import logging
 import datetime
+from yahoo_fantasy_bot import source
 
 
 logger = logging.getLogger()
@@ -18,15 +19,12 @@ class Builder:
 
     :param lg: Yahoo! league
     :type lg: yahoo_fantasy_api.league.League
-    :param skaters_csv: csv file containing skater predictions
-    :type skaters_csv: str
-    :param goalies_csv: csv file containing goalie predictions
-    :type goalies_csv: str
+    :param csv_details: A map of details about the csv that contains the
+        predicted stats
     """
-    def __init__(self, lg, cfg, skaters_csv, goalies_csv):
-        pred_cfg = cfg['Prediction']
-        skaters = self._read_csv(pred_cfg, skaters_csv, 'skaters')
-        goalies = self._read_csv(pred_cfg, goalies_csv, 'goalies')
+    def __init__(self, lg, cfg, csv_details):
+        skaters = self._read_csv(csv_details['skaters'])
+        goalies = self._read_csv(csv_details['goalies'])
         self.ppool = pd.concat([skaters, goalies], sort=True)
         self.nhl_scraper = nhl.Scraper()
         wk_start_date = lg.edit_date()
@@ -55,7 +53,7 @@ class Builder:
         # two data frames.  This also has the affect of attaching eligible
         # positions and Yahoo! player ID from the input player pool.
         my_roster = pd.DataFrame(roster_cont.get_roster())
-        df = my_roster.join(self.ppool, how='inner', on='name')
+        df = my_roster.join(self.ppool, how='inner', on='name', lsuffix='_dup')
 
         # Then we'll figure out the number of games each player is playing
         # this week.  To do this, we'll verify the team each player players
@@ -87,30 +85,40 @@ class Builder:
         else:
             return(np.nan, 0)
 
-    def _read_csv(self, pred_cfg, csv_file, prefix):
+    def _read_csv(self, csv_detail):
         '''Helper to read a csv file based on config settings'''
-        header_parm = prefix + '_csv_header'
-        if header_parm in pred_cfg:
-            header = int(pred_cfg[header_parm])
+        if 'header' in csv_detail:
+            header = int(csv_detail['header'])
         else:
             header = None
-        if prefix + '_csv_column_names' in pred_cfg:
-            return pd.read_csv(csv_file,
-                               index_col=pred_cfg[prefix + '_csv_index_col'],
-                               names=pred_cfg.getlist(
-                                   prefix + '_csv_column_names'),
-                               header=header)
+        if 'column_names' in csv_detail:
+            return pd.read_csv(csv_detail['file_name'],
+                               index_col=csv_detail['index_col'],
+                               names=csv_detail['column_names'],
+                               header=header,
+                               na_values='-')
         else:
-            return pd.read_csv(csv_file,
-                               index_col=pred_cfg[prefix + '_csv_index_col'],
-                               header=header)
+            return pd.read_csv(csv_detail['file_name'],
+                               index_col=csv_detail['index_col'],
+                               header=header,
+                               na_values='-')
 
 
 def init_prediction_builder(lg, cfg):
-    return Builder(lg,
-                   cfg,
-                   cfg['Prediction']['skaters_csv_file'],
-                   cfg['Prediction']['goalies_csv_file'])
+    if 'source' not in cfg['Prediction']:
+        raise RuntimeError(
+            "Missing 'source' config attribute in 'Prediction' section")
+
+    if cfg['Prediction']['source'] == 'yahoo':
+        ps = source.Yahoo(lg, cfg)
+        return Builder(lg, cfg, ps.fetch_csv_details())
+    elif cfg['Prediction']['source'] == 'csv':
+        cs = source.CSV(cfg)
+        return Builder(lg, cfg, cs.fetch_csv_details())
+    else:
+        raise RuntimeError(
+            "Unknown prediction source: {}".format(
+                cfg['Prediction']['source']))
 
 
 class PlayerPrinter:
@@ -260,9 +268,9 @@ class Scorer:
             for stat in stat_cols:
                 if self.is_numeric(p[stat]):
                     if self.use_weekly_sched:
-                        res[stat] += p[stat] / 82 * p['WK_G']
+                        res[stat] += float(p[stat]) / 82 * p['WK_G']
                     else:
-                        res[stat] += p[stat]
+                        res[stat] += float(p[stat])
 
         # Handle ratio stats
         if 'SV%' in self.cats:
@@ -282,7 +290,11 @@ class Scorer:
         if type(v) is float:
             return not np.isnan(v)
         elif type(v) is str:
-            return v.isnumeric()
+            try:
+                float(v)
+                return True
+            except ValueError:
+                return False
         else:
             assert(False), "Unknown type: " + str(type(v))
 
