@@ -340,8 +340,8 @@ class ManagerBot:
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)
 
-    def _set_new_lineup_and_bench(self, new_lineup):
-        new_bench = []
+    def _set_new_lineup_and_bench(self, new_lineup, frozen_bench):
+        new_bench = frozen_bench
         new_plyr_ids = [e["player_id"] for e in new_lineup]
         for plyr in self.lineup:
             if plyr["player_id"] not in new_plyr_ids:
@@ -357,9 +357,12 @@ class ManagerBot:
         if len(self.lineup) < self.my_team_bldr.max_players():
             # Only use bench players that are able to play
             avail_bench = []
+            unavail_bench = []
             for p in self.bench:
                 if p.status == '':
                     avail_bench.append(p)
+                else:
+                    unavail_bench.append(p)
             if len(avail_bench) > 0:
                 optimizer_func = self._get_lineup_optimizer_function()
                 bench_df = pd.DataFrame(data=avail_bench,
@@ -368,7 +371,7 @@ class ManagerBot:
                                             self.my_team_bldr, bench_df,
                                             self.lineup)
                 if new_lineup:
-                    self._set_new_lineup_and_bench(new_lineup)
+                    self._set_new_lineup_and_bench(new_lineup, unavail_bench)
 
     def optimize_lineup_from_bench(self):
         """
@@ -385,7 +388,7 @@ class ManagerBot:
         new_lineup = optimizer_func(self.cfg, self.score_comparer,
                                     self.my_team_bldr, ppool, [])
         if new_lineup:
-            self._set_new_lineup_and_bench(new_lineup)
+            self._set_new_lineup_and_bench(new_lineup, [])
 
     def fill_empty_spots(self):
         if len(self.lineup) < self.my_team_bldr.max_players():
