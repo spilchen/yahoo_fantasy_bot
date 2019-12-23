@@ -158,9 +158,9 @@ class ManagerBot:
                 self.logger.info("Adding {} to bench ({}%)...".format(
                     p['name'], p['percent_owned']))
                 bench.append(p)
-                if len(self.bench) == self.lg_statics.bn_spots:
+                if len(bench) == self.lg_statics.bn_spots:
                     break
-        return bench
+        self.bench = bench
 
     def pick_injury_reserve(self):
         """Pick the injury reserve slots"""
@@ -537,7 +537,7 @@ class ManagerBot:
             self.lineup[idx] = plyr_add
         else:
             del(self.lineup[idx])
-        self.bench = self.pick_bench()
+        self.pick_bench()
 
     def apply_roster_moves(self, dry_run):
         """Make roster changes with Yahoo!
