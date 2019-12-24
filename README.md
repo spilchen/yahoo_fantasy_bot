@@ -21,7 +21,7 @@ pip install -r requirements.txt
 python examples/init_oauth_env.py -k <yahoo_consumer_key> -s <yahoo_secret_key> oauth2.json
 ```
 
-You need to setup a config file to tune the program for your specific league.  Use sample_config.ini as a guide.
+You need to setup a config file to tune the program for your specific league.  Use sample_mlb_config.ini or sample_nhl_config.ini as a guide.
 
 ## Restrictions
 This program will only optimize lineups for teams in a Yahoo! Head-to-Head league.  It only works for teams in mlb or nhl leagues.
