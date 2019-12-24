@@ -70,7 +70,8 @@ class CacheBase(object):
 class TeamCache(CacheBase):
     def __init__(self, cfg, team_key):
         super(TeamCache, self).__init__(
-            cfg, "{}/{}".format(cfg['Cache']['dir'], team_key))
+            cfg, "{}/{}/{}".format(cfg['Cache']['dir'], cfg['League']['id'],
+                                   team_key))
 
     def blacklist_cache_file(self):
         return "{}/blacklist.pkl".format(self.cache_dir)
@@ -93,7 +94,8 @@ class TeamCache(CacheBase):
 
 class LeagueCache(CacheBase):
     def __init__(self, cfg):
-        super(LeagueCache, self).__init__(cfg, cfg['Cache']['dir'])
+        super(LeagueCache, self).__init__(
+            cfg, "{}/{}".format(cfg['Cache']['dir'], cfg['League']['id']))
 
     def free_agents_cache_file(self):
         return "{}/free_agents.pkl".format(self.cache_dir)
