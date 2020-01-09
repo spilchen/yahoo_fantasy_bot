@@ -1,0 +1,152 @@
+#!/bin/python
+
+"""
+Setup a config file for use with ybot.py -- the Yahoo! fantasy bot
+
+Usage:
+  ybot_setup.py [-k <key> -s <secret>] <oauth_file> <cfg_file>
+
+  <oauth_file>       File to read/write the bearer token.  If this file does
+                     not exist, then you must pass in the key and secret in
+                     order to generate one.
+  <cfg_file>         Name of the config file that it will generate
+
+Options:
+  -h --help        Show this screen.
+  -k, --key=key    The consumer key that Yahoo! gave out when the application
+                   was registered.
+  -s, --secret=s   The secret that pairs with the consumer key.
+
+The <cfg_file> argument is the name of the config file that it generates.  On
+successful completion, you can then pass this to the ybot.py command.  See
+ybot.py -h for usage.
+"""
+from docopt import docopt
+from yahoo_oauth import OAuth2
+import yahoo_fantasy_api as yfa
+import json
+import os
+from yahoo_fantasy_bot import utils
+from jinja2 import Environment, PackageLoader
+
+
+class Wizard:
+    def __init__(self, oauth_file, key=None, secret=None):
+        self.key = key
+        self.secret = secret
+        self.oauth_file = oauth_file
+        if not os.path.exists(oauth_file):
+            self.oauth_json_gen()
+        self.oauth_file = os.path.abspath(self.oauth_file)
+        self.sc = None
+        self.oauth_setup()
+        self.league_id = None
+        self.leagues = None
+        self.year = None
+
+    def oauth_json_gen(self):
+        assert(not os.path.exists(self.oauth_file))
+        if self.key is None:
+            raise RuntimeError("Must specify the <consumer_key> option")
+        if self.secret is None:
+            raise RuntimeError("Must specify the <consumer_secret> option")
+        creds = {}
+        creds['consumer_key'] = self.key
+        creds['consumer_secret'] = self.secret
+        with open(self.oauth_file, "w") as f:
+            f.write(json.dumps(creds))
+
+    def oauth_setup(self):
+        self.sc = OAuth2(None, None, from_file=self.oauth_file)
+        if not self.sc.token_is_valid():
+            self.sc.refresh_access_token()
+
+    def fetch_leagues(self):
+        if self.leagues is None:
+            league_ids = self.gm.league_ids(year=self.year)
+            self.leagues = []
+            for league_id in league_ids:
+                # Older leagues have this "auto" in that, which we cannot dump
+                # any particulars about.
+                if "auto" not in league_id:
+                    lg = yfa.League(self.sc, league_id)
+                    settings = lg.settings()
+                    self.leagues.append({"name": settings['name'],
+                                         "id": league_id})
+        return self.leagues
+
+    def get_sport_codes(self):
+        return ['mlb', 'nhl']
+
+    def set_sport_code(self, code):
+        if code not in self.get_sport_codes():
+            raise RuntimeError("Not a supported sport code: {}".format(code))
+        self.sport_code = code
+        self.gm = yfa.Game(self.sc, code)
+
+    def set_year(self, year):
+        self.year = year
+
+    def set_league_id(self, league_id):
+        self.league_id = league_id
+        self.lg = self.gm.to_league(league_id)
+        stat_cats = self.lg.stat_categories()
+        self.stat_categories = ",".join([s['display_name'] for s in stat_cats])
+
+    def render(self, file_name):
+        env = Environment(loader=PackageLoader('ybot_setup', 'templates'))
+        template = env.get_template('sample_{}_config.ini'.format(sport_code))
+        with open(file_name, 'w') as f:
+            f.write(template.render(oauth_file=self.oauth_file,
+                                    league_id=self.league_id,
+                                    stat_categories=self.stat_categories))
+
+
+if __name__ == '__main__':
+    args = docopt(__doc__, version='1.0')
+
+    utils.cleanup_oauth2_logger()
+
+    if os.path.exists(args['<cfg_file>']):
+        print("Output config file already exists.  Type 'yes' to overwrite:")
+        overwrite = input()
+        print("")
+        if overwrite.lower() != 'yes':
+            os.sys.exit(1)
+
+    wizard = Wizard(args['<oauth_file>'], args['--key'], args['--secret'])
+    print("Available sport codes:")
+    for c in wizard.get_sport_codes():
+        print('  - {}'.format(c))
+    print("")
+    print("Enter the sport code:")
+    sport_code = input()
+    wizard.set_sport_code(sport_code)
+    print("")
+    print("Enter the year:")
+    wizard.set_year(int(input()))
+    print("")
+    lgs = wizard.fetch_leagues()
+    if len(lgs) == 0:
+        print("You have not joined any leagues for that sport code.")
+        os.sys.exit(-1)
+    print("List of league IDs you have joined:")
+    for i, lg in enumerate(lgs):
+        print(" {} - {:30} {:15}".format(i, lg['name'], lg['id']))
+    print("")
+    if len(lgs) > 1:
+        print("Pick a league from the above list (0 - {}):".
+              format(len(lgs) - 1))
+        league_inx = int(input())
+        if league_inx < 0 or league_inx > (len(lgs) - 1):
+            print("Not a valid league.  Pick a league between 0 and {}".
+                  format(len(lgs) - 1))
+            os.sys.exit(-1)
+        league_id = lgs[league_inx]['id']
+    else:
+        league_id = lgs[0]['id']
+    wizard.set_league_id(league_id)
+    print("")
+    print('Building config file for "{}"'.format(league_id))
+    wizard.render(args['<cfg_file>'])
+    print("Successfully wrote config file '{}'".format(args['<cfg_file>']))
