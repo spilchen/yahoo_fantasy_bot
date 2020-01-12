@@ -8,23 +8,35 @@ Are you in a Yahoo! fantasy league with inactive managers?  Do you face teams th
 
 [![Build Status](https://travis-ci.com/spilchen/yahoo_fantasy_bot.svg?branch=master)](https://travis-ci.com/spilchen/yahoo_fantasy_bot)
 
+## Restrictions
+This program will only optimize lineups for teams in a Yahoo! Head-to-Head league.  It only works for teams in mlb or nhl leagues.
+
 ## Installation
 
-One time setup:
+### Setup the environment
 ```
 git clone https://github.com/spilchen/yahoo_fantasy_bot.git
 cd yahoo_fantasy_bot
 virtualenv --python=python3.7 env
 source env/bin/activate
 pip install -r requirements.txt
-# You can get your key/secret from https://developer.yahoo.com/apps/create/.  You must request read/write access.
-python examples/init_oauth_env.py -k <yahoo_consumer_key> -s <yahoo_secret_key> oauth2.json
 ```
 
-You need to setup a config file to tune the program for your specific league.  Use sample_mlb_config.ini or sample_nhl_config.ini as a guide.
+### Config file setup
 
-## Restrictions
-This program will only optimize lineups for teams in a Yahoo! Head-to-Head league.  It only works for teams in mlb or nhl leagues.
+The config file is what you pass to the bot.  It includes details about what Yahoo! league you are going to run the bot against, the location of the file that holds the OAuth credentials, what league type it is.  There is a setup wizard that you can run that will get you a working config file for your league.
+
+Before you can run the setup wizard you will first need to request an API key from Yahoo! from: https://developer.yahoo.com/apps/create.   The process is quick.  You will want to request read and write access, since we need write access to make changes to your roster.  Upon completion you will be given a consumer key and a consumer secret that you use with the setup wizard.
+
+With key and secret, run the wizard like this:
+
+```
+ybot_setup.py -k <consumer key> -s <consumer secret> oauth2.json my.cfg
+```
+
+`oauth2.json` is used to store the credentials to access the team.  Using the key and secret, it will pop up a webpage that will confirm you want to grant access to the application.  It will give you a code, which you then paste back into the window running the setup wizard.  The bearer token that it generates is then saved in `oauth2.json` for all subsequent access.
+
+Follow the rest of the prompts in the setup wizard.  Upon completion it will write out a config file -- `my.cfg` in the example above.
 
 ## Execution
 Once installed and the config file created, you can run the program via this command:
