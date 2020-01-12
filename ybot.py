@@ -20,7 +20,7 @@ Options:
 
 """
 from docopt import docopt
-from yahoo_fantasy_bot import interactive, automation, utils
+from yahoo_fantasy_bot import interactive, automation, oauth2_logger
 import logging
 import os
 import pandas as pd
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])
 
-    utils.cleanup_oauth2_logger()
+    oauth2_logger.cleanup()
 
     logging.basicConfig(
         filename=cfg['Logger']['file'],
