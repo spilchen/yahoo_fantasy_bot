@@ -286,6 +286,7 @@ class ManagerBot:
 
     def fetch_free_agents(self):
         def loader():
+            print("Fetching free agents from Yahoo!")
             self.logger.info("Fetching free agents")
             fa = self.lg.free_agents(None)
             self.logger.info(
