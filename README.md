@@ -41,7 +41,7 @@ Follow the rest of the prompts in the setup wizard.  Upon completion it will wri
 ## Execution
 Once installed and the config file created, you can run the program via this command:
 ```
-python ybot.py <cfg_file>
+ybot.py <cfg_file>
 ```
 
 The default is to run in automated mode.  This will optimize the lineup for the next scoring period.  You can do this in a dry-run meaning no changes are made with Yahoo by specifying the --dry-run option.  There is also an interactive mode where you get a menu system and you can run the various lineup optimization commands with the --interactive option.
@@ -51,7 +51,7 @@ To get a full help text use the `--help` option.
 ### Example
 Here is a sample run through.  In this run it will optimize the lineup, print out the lineup then list the roster changes.  It will manage two players on the IR and replace one player in the lineup from the free agent pool.
 ```
-$> python ybot.py hockey.cfg
+$> ybot.py hockey.cfg
 Evaluating trades
 Adjusting lineup for player status
 Optimizing open lineup spots using available free agents

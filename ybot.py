@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/env python
 
 """A bot that acts as a manager for Yahoo! fantasy team
 

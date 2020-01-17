@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/env python
 
 """
 Setup a config file for use with ybot.py -- the Yahoo! fantasy bot
