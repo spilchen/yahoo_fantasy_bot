@@ -3,7 +3,7 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot.py [-idf] <cfg_file>
+  ybot [-idf] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.

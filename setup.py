@@ -1,8 +1,15 @@
 from setuptools import setup
 
+
+def readme():
+    with open('README.rst') as f:
+        return f.read()
+
+
 setup(name='yahoo_fantasy_bot',
       version='0.0.1',
       description='A bot that can act as a manager in a Yahoo! fantasy league',
+      long_description=readme(),
       url='http://github.com/spilchen/yahoo_fantasy_bot',
       author='Matt Spilchen',
       author_email='matt.spilchen@gmail.com',
@@ -16,6 +23,9 @@ setup(name='yahoo_fantasy_bot',
           'License :: OSI Approved :: MIT License',
           'Programming Language :: Python :: 3.5',
       ],
-      install_requires=['yahoo_fantasy_api', 'baseball_scraper'],
+      install_requires=['yahoo_fantasy_api>=1.9.0', 'baseball_scraper>=0.4.9',
+                        'docopt', 'yahoo_oauth', 'nhl_scraper>=0.0.3',
+                        'baseball_id>=0.0.6', 'progressbar', 'jinja2'],
       python_requires='>=3',
-      zip_safe=True)
+      zip_safe=True,
+      scripts=['scripts/ybot', 'scripts/ybot_setup'])

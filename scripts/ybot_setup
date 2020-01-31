@@ -4,7 +4,7 @@
 Setup a config file for use with ybot.py -- the Yahoo! fantasy bot
 
 Usage:
-  ybot_setup.py [-k <key> -s <secret>] <oauth_file> <cfg_file>
+  ybot_setup [-k <key> -s <secret>] <oauth_file> <cfg_file>
 
   <oauth_file>       File to read/write the bearer token.  If this file does
                      not exist, then you must pass in the key and secret in
@@ -26,7 +26,7 @@ from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
 import json
 import os
-from yahoo_fantasy_bot import utils
+from yahoo_fantasy_api import oauth2_logger
 from jinja2 import Environment, PackageLoader
 
 
@@ -94,7 +94,8 @@ class Wizard:
         self.stat_categories = ",".join([s['display_name'] for s in stat_cats])
 
     def render(self, file_name):
-        env = Environment(loader=PackageLoader('ybot_setup', 'templates'))
+        env = Environment(loader=PackageLoader('yahoo_fantasy_bot',
+                                               'templates'))
         template = env.get_template('sample_{}_config.ini'.format(sport_code))
         with open(file_name, 'w') as f:
             f.write(template.render(oauth_file=self.oauth_file,
@@ -105,7 +106,7 @@ class Wizard:
 if __name__ == '__main__':
     args = docopt(__doc__, version='1.0')
 
-    utils.cleanup_oauth2_logger()
+    oauth2_logger.cleanup()
 
     if os.path.exists(args['<cfg_file>']):
         print("Output config file already exists.  Type 'yes' to overwrite:")
