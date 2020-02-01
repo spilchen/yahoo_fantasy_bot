@@ -12,15 +12,17 @@ class Driver(object):
     :param full: True if we are to optimize using the free agents.  False means
         we just optimize for our bench.
     """
-    def __init__(self, cfg, dry_run, full):
+    def __init__(self, cfg, dry_run, full, prompt):
         self.bot = bot.ManagerBot(cfg)
         self.dry_run = dry_run
         self.full = full
+        self.prompt = prompt
 
     def run(self):
         self.bot.sync_lineup()
         print("Evaluating trades")
-        self.bot.evaluate_trades(dry_run=self.dry_run, verbose=True)
+        self.bot.evaluate_trades(dry_run=self.dry_run, verbose=True,
+                                 prompt=self.prompt)
         print("Adjusting lineup for player status")
         self.bot.pick_injury_reserve()
         self.bot.move_non_available_players()
@@ -38,4 +40,4 @@ class Driver(object):
         print("Optimized lineup")
         self.bot.print_roster()
         print("Computing roster moves to apply")
-        self.bot.apply_roster_moves(dry_run=self.dry_run)
+        self.bot.apply_roster_moves(dry_run=self.dry_run, prompt=self.prompt)

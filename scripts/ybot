@@ -3,7 +3,7 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot [-idf] <cfg_file>
+  ybot [-idfp] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
@@ -17,6 +17,7 @@ Options:
                       can potentially add a lot of churn to your lineup.  The
                       alternative is to just consider optimizing the open slots
                       in the lineup and the bench.
+  -p, --prompt        Prompt before applying roster moves.
 
 """
 from docopt import docopt
@@ -54,5 +55,6 @@ if __name__ == '__main__':
         intr = interactive.Driver(cfg)
         intr.run()
     else:
-        auto = automation.Driver(cfg, args['--dry-run'], args['--full'])
+        auto = automation.Driver(cfg, args['--dry-run'], args['--full'],
+                                 args['--prompt'])
         auto.run()

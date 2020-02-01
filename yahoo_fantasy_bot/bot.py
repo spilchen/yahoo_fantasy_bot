@@ -540,15 +540,16 @@ class ManagerBot:
             del(self.lineup[idx])
         self.pick_bench()
 
-    def apply_roster_moves(self, dry_run):
+    def apply_roster_moves(self, dry_run, prompt):
         """Make roster changes with Yahoo!
 
         :param dry_run: Just enumerate the roster moves but don't apply yet
+        :param prompt: Prompt for yes before proceeding
         :type dry_run: bool
         """
         roster_chg = RosterChanger(self.lg, dry_run, self._get_orig_roster(),
                                    self.lineup, self.bench,
-                                   self.injury_reserve)
+                                   self.injury_reserve, prompt)
         roster_chg.apply()
 
         # Change the free agent cache to remove the players we added
@@ -575,7 +576,7 @@ class ManagerBot:
 
         self.pick_opponent(opp_team_key)
 
-    def evaluate_trades(self, dry_run, verbose):
+    def evaluate_trades(self, dry_run, verbose, prompt=False):
         """
         Find any proposed trades against my team and evaluate them.
 
@@ -598,10 +599,17 @@ class ManagerBot:
                     self._print_trade(trade, ev)
                 self.logger.warn("Accept={}    {}".format(ev, trade))
                 if not dry_run:
-                    if ev:
-                        self.tm.accept_trade(trade['transaction_key'])
+                    if prompt:
+                        p = input("Enter 'yes' to proceed?")
+                        proceed = p.lower() == 'yes'
                     else:
-                        self.tm.reject_trade(trade['transaction_key'])
+                        proceed = True
+
+                    if proceed:
+                        if ev:
+                            self.tm.accept_trade(trade['transaction_key'])
+                        else:
+                            self.tm.reject_trade(trade['transaction_key'])
         return len(actionable_trades)
 
     def _evaluate_trade(self, trade):
@@ -684,10 +692,11 @@ class ManagerBot:
 
 class RosterChanger:
     def __init__(self, lg, dry_run, orig_roster, lineup, bench,
-                 injury_reserve):
+                 injury_reserve, prompt):
         self.lg = lg
         self.tm = lg.to_team(lg.team_key())
         self.dry_run = dry_run
+        self.prompt = prompt
         self.orig_roster = orig_roster
         self.lineup = lineup
         self.bench = bench
@@ -699,6 +708,15 @@ class RosterChanger:
         self.adds = []
         self.drops = []
         self.adds_completed = []
+
+    def _continue_with_yahoo(self):
+        if self.dry_run:
+            return False
+        elif not self.prompt:
+            return True
+        else:
+            p = input("Enter 'yes' to proceed?")
+            return p.lower() == 'yes'
 
     def apply(self):
         self._calc_player_drops()
@@ -728,7 +746,7 @@ class RosterChanger:
         while len(self.drops) > len(self.adds):
             plyr = self.drops.pop()
             print("Drop " + plyr['name'])
-            if not self.dry_run:
+            if self._continue_with_yahoo():
                 self.tm.drop_player(plyr['player_id'])
 
     def _apply_player_adds_and_drops(self):
@@ -736,20 +754,20 @@ class RosterChanger:
             if len(self.drops) > len(self.adds):
                 plyr = self.drops.pop()
                 print("Drop " + plyr['name'])
-                if not self.dry_run:
+                if self._continue_with_yahoo():
                     self.tm.drop_player(plyr['player_id'])
             else:
                 plyr = self.adds.pop()
                 self.adds_completed.append(plyr)
                 print("Add " + plyr['name'])
-                if not self.dry_run:
+                if self._continue_with_yahoo():
                     self.tm.add_player(plyr['player_id'])
 
         for add_plyr, drop_plyr in zip(self.adds, self.drops):
             self.adds_completed.append(add_plyr)
             print("Add {} and drop {}".format(add_plyr['name'],
                                               drop_plyr['name']))
-            if not self.dry_run:
+            if self._continue_with_yahoo():
                 self.tm.add_and_drop_players(add_plyr['player_id'],
                                              drop_plyr['player_id'])
 
@@ -757,7 +775,7 @@ class RosterChanger:
         if len(self.drops) > 0:
             plyr = self.drops.pop()
             print("Drop " + plyr['name'])
-            if not self.dry_run:
+            if self._continue_with_yahoo():
                 self.tm.drop_player(plyr['player_id'])
 
     def _apply_ir_moves(self):
@@ -791,7 +809,7 @@ class RosterChanger:
         for plyr in pos_change:
             print("Move {} to {}".format(plyr['name'],
                                          plyr['selected_position']))
-        if len(pos_change) > 0 and not self.dry_run:
+        if len(pos_change) > 0 and self._continue_with_yahoo():
             self.tm.change_positions(self.lg.edit_date(), pos_change)
 
     def _apply_position_selector(self):
@@ -806,5 +824,5 @@ class RosterChanger:
                                'selected_position': 'BN'})
             print("Move {} to BN".format(plyr['name']))
 
-        if not self.dry_run:
+        if self._continue_with_yahoo():
             self.tm.change_positions(self.lg.edit_date(), pos_change)
