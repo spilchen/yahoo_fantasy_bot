@@ -633,11 +633,12 @@ class ManagerBot:
         print("\nTrade should be {}".format("accepted" if ev else "rejected"))
 
     def _get_team_name(self, lg, team_key):
-        for team in lg.teams():
-            if team['team_key'] == team_key:
-                return team['name']
-        raise LookupError("Could not find team for team key: {}".format(
-            team_key))
+        teams = lg.teams()
+        if team_key in teams:
+            return teams[team_key]['name']
+        else:
+            raise LookupError("Could not find team for team key: {}".format(
+                team_key))
 
     def _get_prediction_module(self):
         """Return the module to use for the prediction builder.
