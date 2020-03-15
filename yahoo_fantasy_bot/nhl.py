@@ -19,12 +19,14 @@ class Builder:
 
     :param lg: Yahoo! league
     :type lg: yahoo_fantasy_api.league.League
+    :param cfg: config details
+    :type cfg: ConfigParser
     :param csv_details: A map of details about the csv that contains the
         predicted stats
     """
     def __init__(self, lg, cfg, csv_details):
-        skaters = self._read_csv(csv_details['skaters'])
-        goalies = self._read_csv(csv_details['goalies'])
+        skaters = source.read_csv(csv_details['skaters'])
+        goalies = source.read_csv(csv_details['goalies'])
         self.ppool = pd.concat([skaters, goalies], sort=True)
         self.nhl_scraper = nhl.Scraper()
         wk_start_date = lg.edit_date()
@@ -34,7 +36,7 @@ class Builder:
                                                             wk_end_date)
         self.nhl_players = self.nhl_scraper.players()
 
-    def predict(self, roster_cont):
+    def predict(self, roster_cont, fail_on_missing=True):
         """Build a dataset of hockey predictions for the week
 
         The pool of players is passed into this function through roster_const.
@@ -44,6 +46,9 @@ class Builder:
         prediction stat.
 
         :param roster_cont: Roster of players to generate predictions for
+        :param fail_on_missing: True we are to fail if any player in
+            roster_cont can't be found in the prediction data set.  Set this to
+            false to simply filter those out.
         :type roster_cont: roster.Container object
         :return: Dataset of predictions
         :rtype: DataFrame
@@ -84,24 +89,6 @@ class Builder:
             return (team_id, self.team_game_count[team_id])
         else:
             return(np.nan, 0)
-
-    def _read_csv(self, csv_detail):
-        '''Helper to read a csv file based on config settings'''
-        if 'header' in csv_detail:
-            header = int(csv_detail['header'])
-        else:
-            header = None
-        if 'column_names' in csv_detail:
-            return pd.read_csv(csv_detail['file_name'],
-                               index_col=csv_detail['index_col'],
-                               names=csv_detail['column_names'],
-                               header=header,
-                               na_values='-')
-        else:
-            return pd.read_csv(csv_detail['file_name'],
-                               index_col=csv_detail['index_col'],
-                               header=header,
-                               na_values='-')
 
 
 def init_prediction_builder(lg, cfg):

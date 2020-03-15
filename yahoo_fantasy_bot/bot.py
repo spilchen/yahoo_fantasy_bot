@@ -235,12 +235,16 @@ class ManagerBot:
         """
         def loader():
             pos = self.lg.positions()
-            ir_spots = pos['IR']['count'] if "IR" in pos else 0
-            bn_spots = pos['BN']['count'] if "BN" in pos else 0
             if "IR" in pos:
-                del pos['IR']
-            if "BN" in pos:
-                del pos['BN']
+                ir_spots = pos['IR']['count']
+            elif "IL" in pos:
+                ir_spots = pos['IL']['count']
+            else:
+                ir_spots = 0
+            bn_spots = pos['BN']['count'] if "BN" in pos else 0
+            for del_pos in ['IR', 'IL', 'BN']:
+                if del_pos in pos:
+                    del pos[del_pos]
             return LeagueStatics(pos=pos,
                                  ir_spots=ir_spots,
                                  bn_spots=bn_spots,
@@ -282,7 +286,8 @@ class ManagerBot:
             rcont = roster.Container(None, None)
             rcont.add_players(plyr_pool)
             self.ppool = self.pred_bldr.predict(
-                rcont, *self.cfg['PredictionNamedArguments'])
+                rcont, fail_on_missing=False,
+                *self.cfg['PredictionNamedArguments'])
 
     def fetch_free_agents(self):
         def loader():
@@ -302,11 +307,12 @@ class ManagerBot:
         def loader():
             self.logger.info("Fetching lineups for each team")
             lineups = []
-            for tm in self.lg.teams():
-                tm = self.lg.to_team(tm['team_key'])
+            for tm_key in self.lg.teams().keys():
+                tm = self.lg.to_team(tm_key)
                 rcont = roster.Container(self.lg, tm)
                 lineups.append(self.pred_bldr.predict(
-                    rcont, *self.cfg['PredictionNamedArguments']))
+                    rcont, fail_on_missing=True,
+                    *self.cfg['PredictionNamedArguments']))
             self.logger.info("All lineups fetched.")
             return lineups
 
@@ -336,7 +342,7 @@ class ManagerBot:
             return(None, None)
 
         opp_team = roster.Container(self.lg, self.lg.to_team(opp_team_key))
-        opp_df = self.pred_bldr.predict(opp_team,
+        opp_df = self.pred_bldr.predict(opp_team, fail_on_missing=True,
                                         *self.cfg['PredictionNamedArguments'])
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)

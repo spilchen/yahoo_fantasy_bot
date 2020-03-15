@@ -20,8 +20,9 @@ class Yahoo:
     def __init__(self, lg, cfg):
         self.lg = lg
         self.cfg = cfg
+        self.game_code = lg.settings()['game_code']
 
-    def scrape(self):
+    def fetch_csv_details(self):
         """
         Pull the player stats from Yahoo!
         """
@@ -36,20 +37,31 @@ class Yahoo:
         stats += self._scrape_players(self.lg.free_agents(None))
         logger.info('Scraped stats for {} players'.format(len(stats)))
 
-        skaters_fn = self._create_csv(stats, 'P', 'skaters.csv')
-        goalies_fn = self._create_csv(stats, 'G', 'goalies.csv')
-        logger.info('File names created: skaters={}, goalies={}'.
-                    format(skaters_fn, goalies_fn))
-        return {'skaters': skaters_fn, 'goalies': goalies_fn}
-
-    def fetch_csv_details(self):
-        fns = self.scrape()
-        return {'skaters': {'file_name': fns['skaters'],
-                            'index_col': 'name',
-                            'header': 0},
-                'goalies': {'file_name': fns['goalies'],
-                            'index_col': 'name',
-                            'header': 0}}
+        if self.game_code == 'nhl':
+            skaters_fn = self._create_csv(stats, 'P', 'skaters.csv')
+            goalies_fn = self._create_csv(stats, 'G', 'goalies.csv')
+            logger.info('File names created: skaters={}, goalies={}'.
+                        format(skaters_fn, goalies_fn))
+            return {'skaters': {'file_name': skaters_fn,
+                                'index_col': 'name',
+                                'header': 0},
+                    'goalies': {'file_name': goalies_fn,
+                                'index_col': 'name',
+                                'header': 0}}
+        elif self.game_code == 'mlb':
+            hitters_fn = self._create_csv(stats, 'B', 'hitters.csv')
+            pitchers_fn = self._create_csv(stats, 'P', 'pitcher.csv')
+            print('File names created: hitters={}, pitchers={}'.
+                  format(hitters_fn, pitchers_fn))
+            return {'hitters': {'file_name': hitters_fn,
+                                'index_col': 'name',
+                                'header': 0},
+                    'pitchers': {'file_name': pitchers_fn,
+                                 'index_col': 'name',
+                                 'header': 0}}
+        else:
+            raise RuntimeError("Unsupported game code: {}".format(
+                self.game_code))
 
     def _scrape_players(self, plyrs):
         ids = [e['player_id'] for e in plyrs]
@@ -106,3 +118,22 @@ class CSV:
         if header_field in pcfg:
             details['header'] = pcfg[header_field]
         return details
+
+
+def read_csv(csv_detail):
+    '''Helper to read a csv file based on config settings'''
+    if 'header' in csv_detail:
+        header = int(csv_detail['header'])
+    else:
+        header = None
+    if 'column_names' in csv_detail:
+        return pd.read_csv(csv_detail['file_name'],
+                           index_col=csv_detail['index_col'],
+                           names=csv_detail['column_names'],
+                           header=header,
+                           na_values='-')
+    else:
+        return pd.read_csv(csv_detail['file_name'],
+                           index_col=csv_detail['index_col'],
+                           header=header,
+                           na_values='-')

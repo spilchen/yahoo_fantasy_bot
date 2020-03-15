@@ -82,6 +82,10 @@ class GeneticAlgorithm:
         generated
         :rtype: list or None
         """
+        if self.seed_lineup is None:
+            self.logger.warn(
+                'Could not generate a seed lineup. Exiting lineup optimizer')
+            return None
         self._init_progress_bar(generations)
         self._init_population()
         if len(self.population) == 0:
@@ -172,10 +176,11 @@ class GeneticAlgorithm:
             try:
                 lineup = self.roster_bldr.fit_if_space(lineup, plyr)
             except LookupError:
-                assert(False), \
-                    "Initial set of locked players cannot fit into a single " \
-                    "lineup.  Lineup has {} players already.  Trying to fit "\
-                    "{} players.".format(len(lineup), len(locked_plyrs))
+                self.logger.info(
+                    "Initial set of locked players cannot fit into a single "
+                    "lineup.  Lineup has {} players already.  Trying to fit "
+                    "{} players.".format(len(lineup), len(locked_plyrs)))
+                return None
         return lineup
 
     def _gen_player_selector(self, gen_type='pct_own'):

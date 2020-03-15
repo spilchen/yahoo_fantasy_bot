@@ -93,6 +93,9 @@ class Wizard:
         stat_cats = self.lg.stat_categories()
         self.stat_categories = ",".join([s['display_name'] for s in stat_cats])
 
+    def set_stat_projection(self, stat_proj):
+        self.stat_proj = stat_proj
+
     def render(self, file_name):
         env = Environment(loader=PackageLoader('yahoo_fantasy_bot',
                                                'templates'))
@@ -100,7 +103,8 @@ class Wizard:
         with open(file_name, 'w') as f:
             f.write(template.render(oauth_file=self.oauth_file,
                                     league_id=self.league_id,
-                                    stat_categories=self.stat_categories))
+                                    stat_categories=self.stat_categories,
+                                    stat_projection=self.stat_proj))
 
 
 if __name__ == '__main__':
@@ -147,6 +151,18 @@ if __name__ == '__main__':
     else:
         league_id = lgs[0]['id']
     wizard.set_league_id(league_id)
+    print("")
+    print("Choose source for stat projections:")
+    print("1 - Last season stats")
+    print("2 - Current season stats")
+    proj_input = int(input())
+    if proj_input == 1:
+        wizard.set_stat_projection("yahoo_lastseason")
+    elif proj_input == 2:
+        wizard.set_stat_projection("yahoo")
+    else:
+        print("Not a valid selection.  Pick a number from the list above.")
+        os.sys.exit(-1)
     print("")
     print('Building config file for "{}"'.format(league_id))
     wizard.render(args['<cfg_file>'])
