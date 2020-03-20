@@ -96,16 +96,25 @@ class CSV:
     '''
     Class that pulls details about stats predictions from csv in config file
     '''
-    def __init__(self, cfg):
+    def __init__(self, lg, cfg):
+        self.lg = lg
         self.cfg = cfg
+        self.game_code = lg.settings()['game_code']
 
     def fetch_csv_details(self):
         assert(self.cfg['Prediction']['source'] == 'csv')
-        csv_details = {'skaters':
-                       self.csv_details_from_cfg_for_pred('skaters_csv'),
-                       'goalies':
-                       self.csv_details_from_cfg_for_pred('goalies_csv')}
-        return csv_details
+        if self.game_code == 'nhl':
+            return {'skaters':
+                    self.csv_details_from_cfg_for_pred('skaters_csv'),
+                    'goalies':
+                    self.csv_details_from_cfg_for_pred('goalies_csv')}
+        elif self.game_code == 'mlb':
+            return {'hitters':
+                    self.csv_details_from_cfg_for_pred('hitters_csv'),
+                    'pitchers':
+                    self.csv_details_from_cfg_for_pred('pitchers_csv')}
+        else:
+            raise RuntimeError("Game code not supported " + self.game_code)
 
     def csv_details_from_cfg_for_pred(self, pred):
         pcfg = self.cfg['Prediction']

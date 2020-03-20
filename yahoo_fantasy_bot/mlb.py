@@ -38,6 +38,7 @@ class Builder:
         self.id_lookup = Lookup
         self.use_weekly_schedule = \
             cfg['Scorer'].getboolean('useWeeklySchedule')
+        self.source = cfg['Prediction']['source']
         self.ts = ts
         self.es = es
         self.tss = tss
@@ -57,16 +58,35 @@ class Builder:
     def __getstate__(self):
         return (self.ppool, self.ts, self.es, self.tss, self.wk_start_date,
                 self.wk_end_date, self.season_end_date,
-                self.use_weekly_schedule)
+                self.use_weekly_schedule, self.source)
 
     def __setstate__(self, state):
         self.id_lookup = Lookup
         (self.ppool, self.ts, self.es, self.tss, self.wk_start_date,
-         self.wk_end_date, self.season_end_date, self.use_weekly_schedule) = \
-            state
+         self.wk_end_date, self.season_end_date, self.use_weekly_schedule,
+         self.source) = state
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
+
+    def select_players(self, plyrs):
+        """Return players from the player pool that match the given Yahoo! IDs
+
+        :param plyrs: List of dicts that contain the player name and their
+            Yahoo! ID.  These are all of the players we will return.
+        :return: List of players from the player pool
+        """
+        if self.source.startswith("yahoo"):
+            yahoo_ids = [e['player_id'] for e in plyrs]
+            return self.ppool[self.ppool['player_id'].isin(yahoo_ids)]
+        else:
+            assert(self.source == 'csv')
+            # Convert all of the player IDs to fan graph IDs
+            fg_ids = []
+            for plyr in plyrs:
+                lk = self._lookup_plyr(plyr, True)
+                fg_ids.append(lk['fg_id'])
+            return self.ppool[self.ppool['playerid'].isin(fg_ids)]
 
     def predict(self, roster_cont, fail_on_missing=True,
                 lk_id_system='yahoo_id',
@@ -106,8 +126,14 @@ class Builder:
             # Merge lk with the player pool.  We do an inner join to find the
             # intersection between the player pool and the players from the
             # roster.
-            df = pd.merge(lk, self.ppool, how='inner', left_on=['yahoo_id'],
-                          right_on=['player_id'])
+            if self.source.startswith("yahoo"):
+                df = pd.merge(lk, self.ppool, how='inner',
+                              left_on=['yahoo_id'],
+                              right_on=[scrape_id_system])
+            else:
+                assert(self.source == 'csv')
+                df = pd.merge(lk, self.ppool, how='inner', left_on=['fg_id'],
+                              right_on=[scrape_id_system])
 
             espn_ids = df.espn_id.to_list()
             num_GS = self._num_gs(espn_ids)
@@ -167,34 +193,27 @@ class Builder:
                 a.append(None)
         return a
 
-    def _find_roster(self, position_type, roster, fail_on_missing=True):
-        lk = None
-        for plyr in roster:
-            if plyr['position_type'] != position_type or \
-                    ('selected_position' in plyr and
-                     plyr['selected_position'] in ['BN', 'DL']):
-                continue
-
-            one_lk = self.id_lookup.from_yahoo_ids([plyr['player_id']])
-            # Do a lookup of names if the ID lookup didn't work.  We do two of
-            # them.  The first one is to filter on any name that has a missing
-            # yahoo_id.  This is better then just a plain name lookup because
-            # it has a better chance of being unique.  A missing ID typically
-            # happens for rookies.
+    def _lookup_plyr(self, plyr, fail_on_missing):
+        one_lk = self.id_lookup.from_yahoo_ids([plyr['player_id']])
+        # Do a lookup of names if the ID lookup didn't work.  We do two of
+        # them.  The first one is to filter on any name that has a missing
+        # yahoo_id.  This is better then just a plain name lookup because
+        # it has a better chance of being unique.  A missing ID typically
+        # happens for rookies.
+        if len(one_lk.index) == 0:
+            one_lk = self.id_lookup.from_names(
+                [plyr['name']], filter_missing='yahoo_id')
+            # Failback to a pure-name lookup.  There have been instances
+            # with hitter/pitchers where they have two IDs: one for
+            # pitchers and one for hitters.  The id_lookup only keeps
+            # track of one of those IDs.  We will strip off the '(Batter)'
+            # from their name.
             if len(one_lk.index) == 0:
-                one_lk = self.id_lookup.from_names(
-                    [plyr['name']], filter_missing='yahoo_id')
-                # Failback to a pure-name lookup.  There have been instances
-                # with hitter/pitchers where they have two IDs: one for
-                # pitchers and one for hitters.  The id_lookup only keeps
-                # track of one of those IDs.  We will strip off the '(Batter)'
-                # from their name.
-                if len(one_lk.index) == 0:
-                    paren = plyr['name'].find('(')
-                    if paren > 0:
-                        name = plyr['name'][0:paren-1].strip()
-                    else:
-                        name = plyr['name']
+                paren = plyr['name'].find('(')
+                if paren > 0:
+                    name = plyr['name'][0:paren-1].strip()
+                else:
+                    name = plyr['name']
                     # Get rid of any accents
                     name = utils.normalized(name)
                     one_lk = self.id_lookup.from_names([name])
@@ -203,14 +222,25 @@ class Builder:
                 if fail_on_missing:
                     raise ValueError("Was not able to lookup player: {}".
                                      format(plyr))
-                else:
-                    continue
+        return one_lk
+
+    def _find_roster(self, position_type, roster, fail_on_missing=True):
+        lk = None
+        for plyr in roster:
+            if plyr['position_type'] != position_type or \
+                    ('selected_position' in plyr and
+                     plyr['selected_position'] in ['BN', 'DL']):
+                continue
+
+            one_lk = self._lookup_plyr(plyr, fail_on_missing)
+            if len(one_lk.index) != 1:
+                continue
 
             ep_series = pd.Series([plyr["eligible_positions"]], dtype="object",
                                   index=one_lk.index)
             one_lk = one_lk.assign(eligible_positions=ep_series)
             yahoo_series = pd.Series([plyr['player_id']], index=one_lk.index)
-            one_lk = one_lk.assign(yahoo_id=yahoo_series)
+            one_lk = one_lk.assign(player_id=yahoo_series)
             status_series = pd.Series([plyr['status']], index=one_lk.index)
             one_lk = one_lk.assign(status=status_series)
             name_series = pd.Series([plyr['name']], index=one_lk.index)
@@ -271,7 +301,7 @@ def init_prediction_builder(lg, cfg):
     elif cfg['Prediction']['source'].startswith('yahoo'):
         cv = source.Yahoo(lg, cfg)
     elif cfg['Prediction']['source'] == 'csv':
-        cv = source.CSV(cfg)
+        cv = source.CSV(lg, cfg)
     else:
         raise RuntimeError(
             "Unknown prediction source: {}".format(
@@ -327,7 +357,7 @@ class Categories:
             self.pit_count_cats + self.pit_ratio_cats
         if len(self.all_cats) != len(stats):
             raise RuntimeError("Did not use all stat categories: " +
-                               self.all_cats + " " + stats)
+                               str(self.all_cats) + " " + str(stats))
 
     def _get_intermediate_hit_cats(self, stats):
         ratio_cats = {'AVG': ['AB', 'H'],
@@ -364,7 +394,7 @@ class Categories:
         return list(set(cats))  # Convert to a set to remove dups
 
     def _get_counting_pit_cats(self, stats):
-        counting_pit_stats = ['SV', 'NSV', 'HLD', 'K', 'W']
+        counting_pit_stats = ['SV', 'NSV', 'HLD', 'K', 'W', 'SO']
         cats = []
         for stat in stats:
             if stat in counting_pit_stats:
@@ -384,6 +414,17 @@ class PlayerPrinter(Categories):
     def __init__(self, cfg):
         super().__init__(cfg)
 
+    def printRosterHitHeader(self):
+        print("{:4}: {:20}   ".format('B', '') +
+              "/".join(["{}" for _ in self.all_hit_cats]).format(
+                  *self.all_hit_cats))
+
+    def printRosterPitcherHeader(self):
+        print("")
+        print("{:4}: {:20}   ".format('P', '') +
+              "/".join(["{}" for _ in self.all_pit_cats]).format(
+                  *self.all_pit_cats))
+
     def printRoster(self, lineup, bench, injury_reserve):
         """Print out the roster to standard out
 
@@ -396,16 +437,6 @@ class PlayerPrinter(Categories):
         :param injury_reserve: Players on the injury reserve
         :type injury_reserve: List
         """
-        def printHitHeader():
-            print("{:4}: {:20}   ".format('B', '') +
-                  "/".join(["{}" for _ in self.all_hit_cats]).format(
-                      *self.all_hit_cats))
-        def printPitcherHeader():
-            print("")
-            print("{:4}: {:20}   ".format('P', '') +
-                  "/".join(["{}" for _ in self.all_pit_cats]).format(
-                      *self.all_pit_cats))
-
         hit_header_printed = False
         pit_header_printed = False
         for pos in ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'Util',
@@ -414,7 +445,7 @@ class PlayerPrinter(Categories):
                 if plyr['selected_position'] == pos:
                     if pos in ["SP", "RP"]:
                         if not pit_header_printed:
-                            printPitcherHeader()
+                            self.printRosterPitcherHeader()
                             pit_header_printed = True
 
                         s = "{:4}: {:20}   ".format(plyr['selected_position'],
@@ -422,17 +453,17 @@ class PlayerPrinter(Categories):
                         if len(self.pit_count_cats) > 0:
                             s += "/".join(["{:.1f}" for _ in
                                            self.pit_count_cats]). \
-                                format(*[plyr[s] for s in self.pit_count_cats])
+                                format(*[plyr[t] for t in self.pit_count_cats])
                         s += " "
                         if len(self.pit_ratio_cats) > 0:
                             s += "/".join(["{:.3f}" for _ in
                                            self.pit_ratio_cats]). \
-                                format(*[plyr[s] for s in
-                                          self.pit_ratio_cats])
+                                format(*[plyr[t] for t in
+                                         self.pit_ratio_cats])
                         print(s)
                     else:
                         if not hit_header_printed:
-                            printHitHeader()
+                            self.printRosterHitHeader()
                             hit_header_printed = True
 
                         s = "{:4}: {:20}   ".format(plyr['selected_position'],
@@ -440,13 +471,13 @@ class PlayerPrinter(Categories):
                         if len(self.hit_count_cats) > 0:
                             s += "/".join(["{:.1f}" for _ in
                                            self.hit_count_cats]). \
-                                format(*[plyr[s] for s in
+                                format(*[plyr[t] for t in
                                          self.hit_count_cats])
                         s += " "
                         if len(self.hit_ratio_cats) > 0:
                             s += "/".join(["{:.3f}" for _ in
                                            self.hit_ratio_cats]). \
-                                format(*[plyr[s] for s in
+                                format(*[plyr[t] for t in
                                          self.hit_ratio_cats])
                         print(s)
         print("")
@@ -484,19 +515,19 @@ class PlayerPrinter(Categories):
         if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:
             if len(self.hit_count_cats) > 0:
                 s += "/".join(["{:.1f}" for _ in self.hit_count_cats]).format(
-                    *[plyr[1][s] for s in self.hit_count_cats])
+                    *[plyr[1][t] for t in self.hit_count_cats])
             s += " "
             if len(self.hit_ratio_cats) > 0:
                 s += "/".join(["{:.3f}" for _ in self.hit_ratio_cats]).format(
-                    *[plyr[1][s] for s in self.hit_ratio_cats])
+                    *[plyr[1][t] for t in self.hit_ratio_cats])
         else:
             if len(self.pit_count_cats) > 0:
                 s += "/".join(["{:.1f}" for _ in self.pit_count_cats]).format(
-                    *[plyr[1][s] for s in self.pit_count_cats])
+                    *[plyr[1][t] for t in self.pit_count_cats])
             s += " "
             if len(self.hit_ratio_cats) > 0:
                 s += "/".join(["{:.3f}" for _ in self.pit_ratio_cats]).format(
-                    *[plyr[1][s] for s in self.pit_ratio_cats])
+                    *[plyr[1][t] for t in self.pit_ratio_cats])
         print(s)
 
 

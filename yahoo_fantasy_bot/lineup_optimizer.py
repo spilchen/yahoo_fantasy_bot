@@ -62,12 +62,13 @@ class GeneticAlgorithm:
     def __init__(self, cfg, score_comparer, roster_bldr, avail_plyrs,
                  locked_plyrs):
         self.cfg = cfg
+        self.player_id_col = cfg['Prediction']['player_id_column_name']
         self.logger = logging.getLogger()
         self.score_comparer = score_comparer
         self.roster_bldr = roster_bldr
         self.ppool = avail_plyrs
         self.population = []
-        self.locked_ids = [e["player_id"] for e in locked_plyrs]
+        self.locked_ids = [e[self.player_id_col] for e in locked_plyrs]
         self.seed_lineup = self._generate_seed_lineup(locked_plyrs)
         self.last_lineup_id = 0
         self.pbar = None
@@ -107,6 +108,8 @@ class GeneticAlgorithm:
 
     def _to_sids(self, lineup):
         """Return a sorted list of player IDs"""
+        assert(len(lineup) > 0)
+        assert('player_id' in lineup[0])
         return sorted([e["player_id"] for e in lineup])
 
     def _is_dup_sids(self, sids):
@@ -244,7 +247,7 @@ class GeneticAlgorithm:
 
         :param max_lineups: The maximum number of lineups to have in
         :param selector: PlayerSelector to use to pick players to fill lineups
-        self.population
+            self.population
         """
         assert(len(self.population) < max_lineups)
         lineups = []
@@ -252,7 +255,7 @@ class GeneticAlgorithm:
             fit = False
             if len(self.population) == max_lineups:
                 return
-            if plyr['player_id'] in self.locked_ids:
+            if plyr[self.player_id_col] in self.locked_ids:
                 continue
             for lineup in lineups:
                 if len(lineup) == self.roster_bldr.max_players():
@@ -462,7 +465,7 @@ class GeneticAlgorithm:
         for i, plyr in enumerate(plyrs):
             # Never mutate the locked IDs since we want them to stay
             # in the lineup.
-            if plyr['player_id'] not in self.locked_ids and \
+            if plyr[self.player_id_col] not in self.locked_ids and \
                     random.randint(0, 100) <= mutate_pct:
                 self.logger.info("Mutating player {} in lineup {}".
                                  format(plyr['name'], lineup['id']))

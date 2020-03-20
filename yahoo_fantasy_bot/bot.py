@@ -285,9 +285,7 @@ class ManagerBot:
             plyr_pool = self.fetch_free_agents() + self.fetch_cur_lineup()
             rcont = roster.Container(None, None)
             rcont.add_players(plyr_pool)
-            self.ppool = self.pred_bldr.predict(
-                rcont, fail_on_missing=False,
-                *self.cfg['PredictionNamedArguments'])
+            self.ppool = self._call_predict(rcont, fail_on_missing=False)
 
     def fetch_free_agents(self):
         def loader():
@@ -310,9 +308,7 @@ class ManagerBot:
             for tm_key in self.lg.teams().keys():
                 tm = self.lg.to_team(tm_key)
                 rcont = roster.Container(self.lg, tm)
-                lineups.append(self.pred_bldr.predict(
-                    rcont, fail_on_missing=True,
-                    *self.cfg['PredictionNamedArguments']))
+                lineups.append(self._call_predict(rcont, fail_on_missing=True))
             self.logger.info("All lineups fetched.")
             return lineups
 
@@ -342,8 +338,7 @@ class ManagerBot:
             return(None, None)
 
         opp_team = roster.Container(self.lg, self.lg.to_team(opp_team_key))
-        opp_df = self.pred_bldr.predict(opp_team, fail_on_missing=True,
-                                        *self.cfg['PredictionNamedArguments'])
+        opp_df = self._call_predict(opp_team, fail_on_missing=True)
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)
 
@@ -412,13 +407,14 @@ class ManagerBot:
     def sync_lineup(self):
         """Reset the local lineup to the one that is set in Yahoo!"""
         yahoo_roster = self._get_orig_roster()
-        roster_ids = [e['player_id'] for e in yahoo_roster]
+        roster_ids = [{'player_id': e['player_id'], 'name': e['name']}
+                      for e in yahoo_roster]
         bench_ids = [e['player_id'] for e in yahoo_roster
                      if e['selected_position'] == 'BN']
         ir_ids = [e['player_id'] for e in yahoo_roster
                   if (e['selected_position'] == 'DL' or
                       e['selected_position'] == 'IR')]
-        sel_plyrs = self.ppool[self.ppool['player_id'].isin(roster_ids)]
+        sel_plyrs = self.pred_bldr.select_players(roster_ids)
         lineup = []
         bench = []
         ir = []
@@ -695,6 +691,14 @@ class ManagerBot:
     def _get_orig_roster(self):
         return self.lg.to_team(self.lg.team_key()).roster(
             day=self.lg.edit_date())
+
+    def _call_predict(self, rcont, fail_on_missing):
+            kwargs = {
+                k: v for k, v in self.cfg['PredictionNamedArguments'].items()
+            }
+            return self.pred_bldr.predict(
+                rcont, fail_on_missing=fail_on_missing,
+                **kwargs)
 
 
 class RosterChanger:

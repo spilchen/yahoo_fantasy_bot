@@ -1,7 +1,7 @@
 pytest
 docopt
 yahoo_fantasy_api==2.0.0
-baseball_scraper==0.4.9
+baseball_scraper==0.4.10
 yahoo_oauth
 baseball_id==0.0.6
 nhl_scraper==0.0.3

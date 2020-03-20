@@ -36,7 +36,17 @@ class Builder:
                                                             wk_end_date)
         self.nhl_players = self.nhl_scraper.players()
 
-    def predict(self, roster_cont, fail_on_missing=True):
+    def select_players(self, plyrs):
+        """Return players from the player pool that match the given Yahoo! IDs
+
+        :param plyrs: List of dicts that contain the player name and their
+            Yahoo! ID.  These are all of the players we will return.
+        :return: List of players from the player pool
+        """
+        yahoo_ids = [e['player_id'] for e in plyrs]
+        return self.ppool[self.ppool['player_id'].isin(yahoo_ids)]
+
+    def predict(self, roster_cont, fail_on_missing=True, **kwargs):
         """Build a dataset of hockey predictions for the week
 
         The pool of players is passed into this function through roster_const.
@@ -100,7 +110,7 @@ def init_prediction_builder(lg, cfg):
         ps = source.Yahoo(lg, cfg)
         return Builder(lg, cfg, ps.fetch_csv_details())
     elif cfg['Prediction']['source'] == 'csv':
-        cs = source.CSV(cfg)
+        cs = source.CSV(lg, cfg)
         return Builder(lg, cfg, cs.fetch_csv_details())
     else:
         raise RuntimeError(
