@@ -11,8 +11,8 @@ RSEL_COLS = ["player_id", "name", "HR", "OBP", "W", "ERA"]
 
 @pytest.fixture
 def empty_roster():
-    df = []
-    yield df
+    rcont = roster.Container(None, None)
+    yield rcont
 
 
 @pytest.fixture

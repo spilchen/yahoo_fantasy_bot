@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import pandas as pd
 import numpy as np
@@ -9,7 +9,8 @@ from yahoo_fantasy_bot import roster
 
 def test_fit_empty(bldr, empty_roster):
     plyr = pd.Series([1, "Joe", ['C', '1B', '2B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
+    r = rc.get_roster()
     print(r)
     assert(len(r) == 1)
     assert(r[0]['selected_position'] == 'C')
@@ -17,9 +18,10 @@ def test_fit_empty(bldr, empty_roster):
 
 def test_fit_pick_2nd_pos(bldr, empty_roster):
     plyr = pd.Series([1, "Jack", ['C', '1B', '2B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
     plyr = pd.Series([2, "Kyle", ['C', '1B', '2B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     print(r)
     assert(len(r) == 2)
     assert(r[0]['selected_position'] == 'C')
@@ -31,30 +33,35 @@ def test_fit_pick_2nd_pos(bldr, empty_roster):
 def test_fit_move_multi_pos(bldr, empty_roster):
     plyr = pd.Series([1, "Cecil", ['C', '1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
+    r = rc.get_roster()
     assert(len(r) == 1)
     assert(r[0]['selected_position'] == 'C')
     plyr = pd.Series([2, "Ernie", ['C'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 2)
     assert(r[0]['selected_position'] == '1B')
     assert(r[0]['name'] == 'Cecil')
     assert(r[1]['selected_position'] == 'C')
     assert(r[1]['name'] == 'Ernie')
     plyr = pd.Series([3, "Fred", ['1B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 3)
     assert(r[0]['selected_position'] == '3B')
     assert(r[1]['selected_position'] == 'C')
     assert(r[2]['selected_position'] == '1B')
     assert(r[2]['name'] == 'Fred')
     plyr = pd.Series([4, "George", ['LF', 'RF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 4)
     assert(r[3]['selected_position'] == 'LF')
     assert(r[3]['name'] == 'George')
     plyr = pd.Series([5, "Rance", ['3B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 5)
     assert(r[0]['selected_position'] == 'LF')
     assert(r[0]['name'] == 'Cecil')
@@ -67,25 +74,32 @@ def test_fit_move_multi_pos(bldr, empty_roster):
 def test_fit_failure(bldr, empty_roster):
     plyr = pd.Series([1, "Cecil", ['1B', '3B', 'LF', 'C'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
+    r = rc.get_roster()
     assert(len(r) == 1)
     plyr = pd.Series([2, "Fred", ['1B', 'LF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 2)
     plyr = pd.Series([3, "Rance", ['3B', '2B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 3)
     plyr = pd.Series([4, "Domaso", ['2B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 4)
     plyr = pd.Series([5, "George", ['LF', 'RF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 5)
     plyr = pd.Series([6, "Jesse", ['RF', 'CF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(len(r) == 6)
     plyr = pd.Series([7, "Lloyd", ['CF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     print(r)
     assert(len(r) == 7)
     assert(r[0]['name'] == 'Cecil')
@@ -104,22 +118,23 @@ def test_fit_failure(bldr, empty_roster):
     assert(r[6]['selected_position'] == 'CF')
     plyr = pd.Series([8, "Ernie", ['C', '1B'], np.nan], index=RBLDR_COLS)
     with pytest.raises(LookupError):
-        r = bldr.fit_if_space(r, plyr)
+        rc = bldr.fit_if_space(rc, plyr)
 
 
 def test_fit_failure_cycles(bldr, empty_roster):
     plyr = pd.Series([1, "Cecil", ['1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
     plyr = pd.Series([2, "Rance", ['1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
     plyr = pd.Series([3, "Garth", ['1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
     plyr = pd.Series([4, "George", ['LF'], np.nan], index=RBLDR_COLS)
     with pytest.raises(LookupError):
-        r = bldr.fit_if_space(r, plyr)
+        rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     print(r)
     assert(len(r) == 3)
     assert(r[0]['name'] == 'Cecil')
@@ -130,15 +145,16 @@ def test_fit_failure_cycles(bldr, empty_roster):
     assert(r[2]['selected_position'] == 'LF')
 
 
-def test_fit_enumerate_3(bldr, empty_roster):
+def test_fit_with_lookup_error(bldr, empty_roster):
     plyr = pd.Series([1, "Ben", ['1B', '3B', 'LF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
     plyr = pd.Series([2, "Rance", ['1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
     plyr = pd.Series([3, "Garth", ['1B', '3B', 'LF'], np.nan],
                      index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(r[0]['name'] == 'Ben')
     assert(r[0]['selected_position'] == '1B')
     assert(r[1]['name'] == 'Rance')
@@ -146,42 +162,18 @@ def test_fit_enumerate_3(bldr, empty_roster):
     assert(r[2]['name'] == 'Garth')
     assert(r[2]['selected_position'] == 'LF')
     plyr = pd.Series([4, "George", ['LF'], np.nan], index=RBLDR_COLS)
-    itr = bldr.enumerate_fit(r, plyr)
-    er = next(itr)
-    print(er)
-    assert(er[0]['name'] == 'Rance')
-    assert(er[0]['selected_position'] == '3B')
-    assert(er[1]['name'] == 'Garth')
-    assert(er[1]['selected_position'] == '1B')
-    assert(er[2]['name'] == 'George')
-    assert(er[2]['selected_position'] == 'LF')
-    er = next(itr)
-    print(er)
-    assert(er[0]['name'] == 'Ben')
-    assert(er[0]['selected_position'] == '1B')
-    assert(er[1]['name'] == 'Garth')
-    assert(er[1]['selected_position'] == '3B')
-    assert(er[2]['name'] == 'George')
-    assert(er[2]['selected_position'] == 'LF')
-    er = next(itr)
-    print(er)
-    assert(er[0]['name'] == 'Ben')
-    assert(er[0]['selected_position'] == '1B')
-    assert(er[1]['name'] == 'Rance')
-    assert(er[1]['selected_position'] == '3B')
-    assert(er[2]['name'] == 'George')
-    assert(er[2]['selected_position'] == 'LF')
-    with pytest.raises(StopIteration):
-        er = next(itr)
+    with pytest.raises(LookupError):
+        rc = bldr.fit_if_space(rc, plyr)
 
 
-def test_fit_enumerate_2(bldr, empty_roster):
+def test_fit_with_lookup_error_2(bldr, empty_roster):
     plyr = pd.Series([1, "Paul", ['3B'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(empty_roster, plyr)
+    rc = bldr.fit_if_space(empty_roster, plyr)
     plyr = pd.Series([2, "Robin", ['CF', 'SS'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
     plyr = pd.Series([3, "Gorman", ['CF'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(r, plyr)
+    rc = bldr.fit_if_space(rc, plyr)
+    r = rc.get_roster()
     assert(r[0]['name'] == 'Paul')
     assert(r[0]['selected_position'] == '3B')
     assert(r[1]['name'] == 'Robin')
@@ -189,25 +181,8 @@ def test_fit_enumerate_2(bldr, empty_roster):
     assert(r[2]['name'] == 'Gorman')
     assert(r[2]['selected_position'] == 'CF')
     plyr = pd.Series([4, "Kevin", ['CF', 'SS'], np.nan], index=RBLDR_COLS)
-    itr = bldr.enumerate_fit(r, plyr)
-    er = next(itr)
-    print(er)
-    assert(er[0]['name'] == 'Paul')
-    assert(er[0]['selected_position'] == '3B')
-    assert(er[1]['name'] == 'Gorman')
-    assert(er[1]['selected_position'] == 'CF')
-    assert(er[2]['name'] == 'Kevin')
-    assert(er[2]['selected_position'] == 'SS')
-    er = next(itr)
-    print(er)
-    assert(er[0]['name'] == 'Paul')
-    assert(er[0]['selected_position'] == '3B')
-    assert(er[1]['name'] == 'Robin')
-    assert(er[1]['selected_position'] == 'SS')
-    assert(er[2]['name'] == 'Kevin')
-    assert(er[2]['selected_position'] == 'CF')
-    with pytest.raises(StopIteration):
-        er = next(itr)
+    with pytest.raises(LookupError):
+        rc = bldr.fit_if_space(rc, plyr)
 
 
 def test_fit_with_duplicate_positions(bldr, empty_roster):
@@ -226,10 +201,11 @@ def test_fit_with_duplicate_positions(bldr, empty_roster):
         r = bldr.fit_if_space(r, plyr)
     plyr = pd.Series([7, "Claudell", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
     r = bldr.fit_if_space(r, plyr)
-    print(r)
-    assert(len(r) == 6)
-    assert(r[5]['name'] == 'Claudell')
-    assert(r[5]['selected_position'] == 'RP')
+    rst = r.get_roster()
+    print(rst)
+    assert(len(rst) == 6)
+    assert(rst[5]['name'] == 'Claudell')
+    assert(rst[5]['selected_position'] == 'RP')
 
 
 def test_fit_with_multiple_duplicate_positions_1(bldr, empty_roster):
@@ -243,8 +219,8 @@ def test_fit_with_multiple_duplicate_positions_1(bldr, empty_roster):
     r = bldr.fit_if_space(r, plyr)
     plyr = pd.Series([5, "Alexander", ['SP', 'RP'], np.nan], index=RBLDR_COLS)
     r = bldr.fit_if_space(r, plyr)
-    print(r)
-    for plyr in r:
+    print(r.get_roster())
+    for plyr in r.get_roster():
         assert(plyr.selected_position == 'SP')
     plyr = pd.Series([6, "Fernandez", ['SP'], np.nan], index=RBLDR_COLS)
     r = bldr.fit_if_space(r, plyr)
@@ -253,9 +229,9 @@ def test_fit_with_multiple_duplicate_positions_1(bldr, empty_roster):
     plyr = pd.Series([8, "Key", ['SP'], np.nan], index=RBLDR_COLS)
     r = bldr.fit_if_space(r, plyr)
     plyr = pd.Series([9, "Guzman", ['SP'], np.nan], index=RBLDR_COLS)
-    print(r)
+    print(r.get_roster())
     for i in [2, 3, 4]:
-        assert(r[i]['selected_position'] == 'RP')
+        assert(r.get_roster()[i]['selected_position'] == 'RP')
     with pytest.raises(LookupError):
         r = bldr.fit_if_space(r, plyr)
 
@@ -281,28 +257,29 @@ def test_fit_with_multiple_duplicate_positions_2(bldr, empty_roster):
     r = bldr.fit_if_space(r, plyr)
     print(r)
     expected_positions = ['RF', '2B', 'Util', '3B', 'LF', 'CF', '1B']
-    for plyr, exp_pos in zip(r, expected_positions):
+    for plyr, exp_pos in zip(r.get_roster(), expected_positions):
         assert(plyr['selected_position'] == exp_pos)
 
 
-def test_fit_with_multiple_duplicate_positions_3():
+def test_fit_with_multiple_duplicate_positions_3(empty_roster):
     bldr = roster.Builder(['C', 'C', 'RW', 'RW', 'LW', 'LW', 'D', 'D', 'D',
                            'D', 'G', 'G'])
-    rst = []
-    rst.append(pd.Series([1, 'Marchand', ['LW'], 'LW'], index=RBLDR_COLS))
-    rst.append(pd.Series([2, 'Vasilevskiy', ['G'], 'G'], index=RBLDR_COLS))
-    rst.append(pd.Series([3, 'Draisaitl', ['C', 'LW'], 'C'], index=RBLDR_COLS))
-    rst.append(pd.Series([4, 'Letang', ['D'], 'D'], index=RBLDR_COLS))
-    rst.append(pd.Series([5, 'Josi', ['D'], 'D'], index=RBLDR_COLS))
-    rst.append(pd.Series([6, 'Kane', ['RW'], 'RW'], index=RBLDR_COLS))
-    rst.append(pd.Series([7, 'Giroux', ['C', 'LW', 'RW'], 'C'],
-                         index=RBLDR_COLS))
-    rst.append(pd.Series([8, 'Doughty', ['D'], 'D'], index=RBLDR_COLS))
-    rst.append(pd.Series([9, 'Ellis', ['D'], 'D'], index=RBLDR_COLS))
-    rst.append(pd.Series([10, 'Hertl', ['C', 'LW'], 'LW'], index=RBLDR_COLS))
+    rst = empty_roster
+    rst.add_player(pd.Series([1, 'Marchand', ['LW'], 'LW'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([2, 'Vasilevskiy', ['G'], 'G'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([3, 'Draisaitl', ['C', 'LW'], 'C'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([4, 'Letang', ['D'], 'D'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([5, 'Josi', ['D'], 'D'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([6, 'Kane', ['RW'], 'RW'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([7, 'Giroux', ['C', 'LW', 'RW'], 'C'],
+                             index=RBLDR_COLS))
+    rst.add_player(pd.Series([8, 'Doughty', ['D'], 'D'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([9, 'Ellis', ['D'], 'D'], index=RBLDR_COLS))
+    rst.add_player(pd.Series([10, 'Hertl', ['C', 'LW'], 'LW'], index=RBLDR_COLS))
 
     plyr = pd.Series([11, 'Pacioretty', ['LW'], np.nan], index=RBLDR_COLS)
-    r = bldr.fit_if_space(rst, plyr)
+    rst = bldr.fit_if_space(rst, plyr)
+    r = rst.get_roster()
     assert(len(r) == 11)
     assert(r[10]['name'] == 'Pacioretty')
     assert(r[10]['selected_position'] == 'LW')
@@ -314,7 +291,7 @@ def test_fit_with_multiple_duplicate_positions_3():
     assert(r[2]['selected_position'] == 'C')
 
 
-def test_fit_enumerate_dup_position(bldr, empty_roster):
+def test_fit_with_dup_position(bldr, empty_roster):
     plyr = pd.Series([1, "Henke", ['RP'], np.nan], index=RBLDR_COLS)
     r = bldr.fit_if_space(empty_roster, plyr)
     plyr = pd.Series([2, "Ward", ['RP'], np.nan], index=RBLDR_COLS)
@@ -328,32 +305,6 @@ def test_fit_enumerate_dup_position(bldr, empty_roster):
     plyr = pd.Series([6, "Castillo", ['RP'], np.nan], index=RBLDR_COLS)
     with pytest.raises(LookupError):
         r = bldr.fit_if_space(r, plyr)
-    itr = bldr.enumerate_fit(r, plyr)
-
-    def names(r):
-        n = []
-        for plyr in r:
-            if type(plyr['selected_position']) == str:
-                n.append(plyr['name'])
-        return n
-
-    er = next(itr)
-    print([e['name'] for e in er])
-    assert(names(er) == ['Ward', 'Timlin', 'Eichorn', 'Cox', 'Castillo'])
-    er = next(itr)
-    print([e['name'] for e in er])
-    assert(names(er) == ['Henke', 'Timlin', 'Eichorn', 'Cox', 'Castillo'])
-    er = next(itr)
-    print([e['name'] for e in er])
-    assert(names(er) == ['Henke', 'Ward', 'Eichorn', 'Cox', 'Castillo'])
-    er = next(itr)
-    print([e['name'] for e in er])
-    assert(names(er) == ['Henke', 'Ward', 'Timlin', 'Cox', 'Castillo'])
-    er = next(itr)
-    print([e['name'] for e in er])
-    assert(names(er) == ['Henke', 'Ward', 'Timlin', 'Eichorn', 'Castillo'])
-    with pytest.raises(StopIteration):
-        er = next(itr)
 
 
 def test_selector_rank_hitters(fake_player_selector):
@@ -412,3 +363,15 @@ def test_selector_pitchers_iter(fake_player_selector):
     for exp, plyr in zip(expected_order, fake_player_selector.select()):
         print(plyr)
         assert(plyr['name'] == exp)
+
+
+def test_roster_del_player(empty_roster):
+    rc = empty_roster
+    plyr = pd.Series([1, "Cecil", ['1B', '3B', 'LF', 'C'], '1B'],
+                     index=RBLDR_COLS)
+    rc.add_player(plyr)
+    assert(rc.get_num_players_at_pos('1B') == 1)
+    assert(rc.get_player_by_pos('1B', 0)['name'] == 'Cecil')
+    rc.del_player(0)
+    assert(rc.get_num_players_at_pos('1B') == 0)
+    assert(rc.get_player_by_pos('1B', 0) is None)

@@ -88,7 +88,7 @@ class Builder:
                 fg_ids.append(lk['fg_id'])
             return self.ppool[self.ppool['playerid'].isin(fg_ids)]
 
-    def predict(self, roster_cont, fail_on_missing=True,
+    def predict(self, plyrs, fail_on_missing=True,
                 lk_id_system='yahoo_id',
                 scrape_id_system='playerid', team_has='abbrev'):
         """Build a dataset of hitting and pitching predictions for the week
@@ -98,8 +98,8 @@ class Builder:
 
         The returning DataFrame is the prediction of each stat.
 
-        :param roster_cont: Roster of players to generate predictions for
-        :type roster_cont: roster.Container object
+        :param plyrs: Roster of players to generate predictions for
+        :type plyrs: list
         :param fail_on_missing: True we are to fail if any player in
             roster_cont can't be found in the prediction data set.  Set this to
             false to simply filter those out.
@@ -118,8 +118,7 @@ class Builder:
         """
         res = pd.DataFrame()
         for roster_type in ['B', 'P']:
-            lk = self._find_roster(roster_type, roster_cont.get_roster(),
-                                   fail_on_missing)
+            lk = self._find_roster(roster_type, plyrs, fail_on_missing)
             if lk is None:
                 continue
 

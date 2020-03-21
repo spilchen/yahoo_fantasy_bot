@@ -46,7 +46,7 @@ class Builder:
         yahoo_ids = [e['player_id'] for e in plyrs]
         return self.ppool[self.ppool['player_id'].isin(yahoo_ids)]
 
-    def predict(self, roster_cont, fail_on_missing=True, **kwargs):
+    def predict(self, plyrs, fail_on_missing=True, **kwargs):
         """Build a dataset of hockey predictions for the week
 
         The pool of players is passed into this function through roster_const.
@@ -55,7 +55,8 @@ class Builder:
         The returning DataFrame has rows for each player, and columns for each
         prediction stat.
 
-        :param roster_cont: Roster of players to generate predictions for
+        :param plyrs: Roster of players to generate predictions for
+        :type plyrs: list
         :param fail_on_missing: True we are to fail if any player in
             roster_cont can't be found in the prediction data set.  Set this to
             false to simply filter those out.
@@ -67,7 +68,7 @@ class Builder:
         # all of the players not in roster_cont by doing an inner join of the
         # two data frames.  This also has the affect of attaching eligible
         # positions and Yahoo! player ID from the input player pool.
-        my_roster = pd.DataFrame(roster_cont.get_roster())
+        my_roster = pd.DataFrame(plyrs)
         df = my_roster.join(self.ppool, how='inner', on='name', lsuffix='_dup')
 
         # Then we'll figure out the number of games each player is playing

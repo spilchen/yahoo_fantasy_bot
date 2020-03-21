@@ -108,9 +108,9 @@ class GeneticAlgorithm:
 
     def _to_sids(self, lineup):
         """Return a sorted list of player IDs"""
-        assert(len(lineup) > 0)
-        assert('player_id' in lineup[0])
-        return sorted([e["player_id"] for e in lineup])
+        assert(len(lineup.get_roster()) > 0)
+        assert('player_id' in lineup.get_roster()[0])
+        return sorted([e["player_id"] for e in lineup.get_roster()])
 
     def _is_dup_sids(self, sids):
         """Check if any lineup in the population matches the given sids"""
@@ -122,7 +122,7 @@ class GeneticAlgorithm:
     def _log_lineup(self, descr, lineup):
         self.logger.info("Lineup: ID={}, Desc={}, Score={}".format(
             lineup['id'], descr, lineup['score']))
-        for plyr in lineup['players']:
+        for plyr in lineup['players'].get_roster():
             self.logger.info(
                 "{} - {} ({}%)".format(plyr['selected_position'],
                                        plyr['name'],
@@ -148,7 +148,6 @@ class GeneticAlgorithm:
         self.pbar.update(generation + 1)
 
     def _log_population(self):
-        return
         for i, lineup in enumerate(self.population):
             self._log_lineup("Initial Population " + str(i), lineup)
 
@@ -174,7 +173,7 @@ class GeneticAlgorithm:
         :return: Initial seed lineup
         :rtype: list
         """
-        lineup = []
+        lineup = roster.Container(None, None)
         for plyr in locked_plyrs:
             try:
                 lineup = self.roster_bldr.fit_if_space(lineup, plyr)
@@ -182,7 +181,7 @@ class GeneticAlgorithm:
                 self.logger.info(
                     "Initial set of locked players cannot fit into a single "
                     "lineup.  Lineup has {} players already.  Trying to fit "
-                    "{} players.".format(len(lineup), len(locked_plyrs)))
+                    "{} players.".format(len(lineup.get_roster()), len(locked_plyrs)))
                 return None
         return lineup
 
@@ -206,11 +205,11 @@ class GeneticAlgorithm:
         return selector
 
     def _add_completed_lineup(self, lineup):
-        assert(len(lineup) == self.roster_bldr.max_players())
+        assert(len(lineup.get_roster()) == self.roster_bldr.max_players())
         sids = self._to_sids(lineup)
         if self._is_dup_sids(sids):
             return
-        score = self.score_comparer.compute_score(lineup),
+        score = self.score_comparer.compute_score(lineup.get_roster()),
         self.population.append({'players': lineup,
                                 'score': score,
                                 'id': self._gen_lineup_id(),
@@ -233,10 +232,10 @@ class GeneticAlgorithm:
             lineup = self.roster_bldr.fit_if_space(lineup, plyr)
             fit = True
 
-            if len(lineup) == self.roster_bldr.max_players():
+            if len(lineup.get_roster()) == self.roster_bldr.max_players():
                 self._add_completed_lineup(lineup)
         except LookupError:
-            pass   # Try fitting in the next lineup
+            pass   # Try fitting in the next rcont
         return fit
 
     def _generate_lineups(self, max_lineups, selector):
@@ -258,7 +257,7 @@ class GeneticAlgorithm:
             if plyr[self.player_id_col] in self.locked_ids:
                 continue
             for lineup in lineups:
-                if len(lineup) == self.roster_bldr.max_players():
+                if len(lineup.get_roster()) == self.roster_bldr.max_players():
                     continue
                 fit = self._fit_plyr_to_lineup(plyr, lineup)
                 if fit:
@@ -353,7 +352,7 @@ class GeneticAlgorithm:
         offspring = [mates[0], mates[1]]
         for _ in range(int(self.cfg['LineupOptimizer']['numOffspring'])):
             plyrs = self._complete_lineup(ppool, self.seed_lineup)
-            score = self.score_comparer.compute_score(plyrs)
+            score = self.score_comparer.compute_score(plyrs.get_roster())
             offspring.append({'players': plyrs, 'score': score,
                               'id': self._gen_lineup_id(),
                               'sids': self._to_sids(plyrs)})
@@ -382,37 +381,39 @@ class GeneticAlgorithm:
         df = pd.DataFrame()
         player_ids = []
         for lineup in lineups:
-            for i, plyr in enumerate(lineup['players']):
+            for i, plyr in enumerate(lineup['players'].get_roster()):
                 # Avoid adding duplicate players to the pool
                 if plyr['player_id'] not in player_ids:
                     df = df.append(plyr, ignore_index=True)
                     player_ids.append(plyr['player_id'])
         return df
 
-    def _complete_lineup(self, ppool, lineup):
+    def _complete_lineup(self, ppool, rcont):
         """
         Complete a lineup so that it has the max number of players
 
         The players are selected at random.
 
         :param ppool: Player pool to pull from
-        :param lineup: Lineup to fill.  Can be [].
-        :return: List that contains the players in the lineup
+        :param rcont: Lineup to fill.  Can be empty.
+        :type rcont: roster.Container
+        :return: Roster that contains the players in the lineup
+        :rtype: roster.Container
         """
-        ids = [e['player_id'] for e in lineup]
+        ids = [e['player_id'] for e in rcont.get_roster()]
         selector = roster.PlayerSelector(ppool)
         selector.shuffle()
         for plyr in selector.select():
-            # Do not add the player if it is already in the lineup
+            # Do not add the player if it is already in the rcont
             if plyr['player_id'] in ids:
                 continue
             try:
                 plyr['selected_position'] = np.nan
-                lineup = self.roster_bldr.fit_if_space(lineup, plyr)
+                rcont = self.roster_bldr.fit_if_space(rcont, plyr)
             except LookupError:
                 pass
-            if len(lineup) == self.roster_bldr.max_players():
-                return lineup
+            if len(rcont.get_roster()) == self.roster_bldr.max_players():
+                return rcont
         raise RuntimeError(
             "Walked all of the players but couldn't create a lineup.  Have "
             "{} players".format(len(lineup)))
@@ -433,11 +434,11 @@ class GeneticAlgorithm:
 
             self._log_lineup("(Pre) Mutated lineup", lineup)
             self._complete_lineup(self.ppool, new_plyrs)
-            assert(len(new_plyrs) == self.roster_bldr.max_players())
+            assert(len(new_plyrs.get_roster()) == self.roster_bldr.max_players())
             sids = self._to_sids(new_plyrs)
             if self._is_dup_sids(sids):
                 continue
-            score = self.score_comparer.compute_score(new_plyrs)
+            score = self.score_comparer.compute_score(new_plyrs.get_roster())
             if score <= lineup['score']:
                 continue
             new_lineup = {"players": new_plyrs, "id": self._gen_lineup_id(),
@@ -458,11 +459,12 @@ class GeneticAlgorithm:
 
         :param plyrs: List of players to consider for mutation
         :return: Players with mutated players removed.  Return None if no
-        mutation occurred
+            mutation occurred
+        :rtype: roster.Container
         """
         mutates = []
-        plyrs = lineup['players']
-        for i, plyr in enumerate(plyrs):
+        rcont = lineup['players']
+        for i, plyr in enumerate(rcont.get_roster()):
             # Never mutate the locked IDs since we want them to stay
             # in the lineup.
             if plyr[self.player_id_col] not in self.locked_ids and \
@@ -472,8 +474,8 @@ class GeneticAlgorithm:
                 mutates.append(i)
         if len(mutates) == 0:
             return None
-        new_plyrs = copy.deepcopy(plyrs)
-        mutates.reverse()   # Delete at the end of lineup first
+        new_rcont = copy.deepcopy(rcont)
+        mutates.reverse()   # Delete at the end of rcont first
         for i in mutates:
-            del(new_plyrs[i])
-        return new_plyrs
+            new_rcont.del_player(i)
+        return new_rcont

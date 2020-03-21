@@ -15,6 +15,8 @@ class Container:
     :type team: yahoo_fantasy_api.team.Team
     """
     def __init__(self, lg, team):
+        # TODO - decouple this class from lg/team.  Have an API to allow
+        #  the caller to set a roster from Yahoo!
         if lg is not None:
             self.week = lg.current_week() + 1
             if self.week > lg.end_week():
@@ -24,60 +26,39 @@ class Container:
                            if e["selected_position"] not in ["IR", "BN"]]
         else:
             self.roster = []
+        self.pos_count = self._compute_pos_count()
+        self.plyr_by_pos = self._compute_player_by_pos()
 
     def get_roster(self):
         return self.roster
 
-    def del_player(self, player_name):
-        """Removes the given player from your roster
+    def del_player(self, offset):
+        """Removes a player given its offset in the self.roster list
 
-        :param player_name: Full name of the player to delete.  The player name
-               must this exactly; with the exception of accents, which are
-               normalized out
-        :type player_name: str
+        :param offset: The offset within self.roster to remove
+        :type offset: int
         """
-        for plyr in self.roster:
-            if utils.normalized(player_name) == utils.normalized(plyr['name']):
-                self.roster.remove(plyr)
+        assert(offset >= 0 and offset < len(self.roster))
+        del_plyr = self.roster[offset]
+        pos = del_plyr['selected_position']
+        self.pos_count[pos] -= 1
+        self._del_from_plyr_by_pos(del_plyr)
+        del self.roster[offset]
 
-    def player_exists(self, player_name):
-        """Check if the given player is on your roster
-
-        :param player_name: The player name to check
-        :type player_name: string
-        :return: True if the player, False otherwise
-        :rtype: boolean
-        """
-        for plyr in self.roster:
-            if player_name == utils.normalized(plyr['name']):
-                return True
-        return False
-
-    def get_position_type(self, pos):
-        if pos in ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "Util"]:
-            return 'B'
-        elif pos in ["SP", "RP"]:
-            return 'P'
-        else:
-            raise ValueError("{} is not a valid position".format(pos))
-
-    def add_player(self, player_name, pos):
+    def add_player(self, player):
         """Adds a player to the roster
 
         This will raise an error if the player already exists on the roster.
 
-        :param player_name: Full name of the player to add.
-        :type player_name: str
-        :param pos: The short version of the selected position.
-        :type pos: str
+        :param player: Fully setup player object to add.
+        :type player: dict
         """
-        if self.player_exists(player_name):
-            raise ValueError("Player is already on the roster")
-
-        self.roster.append({'position_type': self.get_position_type(pos),
-                            'selected_position': pos,
-                            'name': player_name,
-                            'player_id': -1})
+        self.roster.append(player)
+        pos = player['selected_position']
+        self._incr_pos_count(pos)
+        if pos not in self.plyr_by_pos:
+            self.plyr_by_pos[pos]=[]
+        self.plyr_by_pos[pos].append(player)
 
     def add_players(self, players):
         """Adds multiple players in bulk.
@@ -85,23 +66,97 @@ class Container:
         :param players: List of players to add to the container
         :type players: List(dict)
         """
-        self.roster = self.roster + players
+        for p in players:
+            self.add_player(p)
 
-    def change_position(self, player_name, pos):
+    def change_position(self, plyr, pos):
         """Change the position of a player
 
         The player must be on your roster.
 
-        :param player_name: Full name of the player who's position is changing
-        :type player_name: str
+        :param plyr: Player to change the position
+        :type plyr: dict
         :param pos: The short version of the position.
         :type pos: str
         """
-        for plyr in self.roster:
-            if utils.normalized(player_name) == utils.normalized(plyr['name']):
-                plyr['selected_position'] = pos
-                return
-        raise ValueError("Player not found on roster")
+        assert(isinstance(pos, str))
+
+        # It the players selected position is not set, then lets include
+        # it in the roster.
+        if not isinstance(plyr['selected_position'], str):
+            plyr['selected_position'] = pos
+            self.add_player(plyr)
+            return
+
+        old_pos = plyr['selected_position']
+        self.pos_count[old_pos] -= 1
+        self._del_from_plyr_by_pos(plyr)
+        plyr['selected_position'] = pos
+        self._incr_pos_count(pos)
+        if pos not in self.plyr_by_pos:
+            self.plyr_by_pos[pos] = []
+        self.plyr_by_pos[pos].append(plyr)
+
+    def get_num_players_at_pos(self, pos):
+        """Return the number of players at the given position
+
+        :param pos: Position to check
+        :type pos: str
+        :return: Number of players at the given position
+        :rtype: int
+        """
+        if pos in self.pos_count:
+            return self.pos_count[pos]
+        else:
+            return 0
+
+    def get_player_by_pos(self, pos, occurrence):
+        """Return the player at the given position and occurrence"""
+        cum_occurrence = 0
+        if pos in self.plyr_by_pos:
+            for plyr in self.plyr_by_pos[pos]:
+                if cum_occurrence == occurrence:
+                    return plyr
+                cum_occurrence += 1
+        return None
+
+    def _compute_pos_count(self):
+        """Compute the map of position counts"""
+        pos_count = {}
+        for p in self.roster:
+            assert (isinstance(p['selected_position'], str))
+            if p['selected_position'] in pos_count:
+                pos_count[p['selected_position']] += 1
+            else:
+                pos_count[p['selected_position']] = 1
+        return pos_count
+
+    def _compute_player_by_pos(self):
+        """Compute a map of player by their position"""
+        plyr_by_pos = {}
+        for p in self.roster:
+            assert (isinstance(p['selected_position'], str))
+            pos = p['selected_position']
+            if pos not in plyr_by_pos:
+                plyr_by_pos[pos] = []
+            plyr_by_pos[pos].append(p)
+        return plyr_by_pos
+
+    def _incr_pos_count(self, pos):
+        if pos in self.pos_count:
+            self.pos_count[pos] += 1
+        else:
+            self.pos_count[pos] = 1
+
+    def _del_from_plyr_by_pos(self, plyr):
+        """Helper to remove a player from self.plyr_by_pos"""
+        old_pos = plyr['selected_position']
+        for i, p in enumerate(self.plyr_by_pos[old_pos]):
+            if p['player_id'] == plyr['player_id']:
+                del self.plyr_by_pos[old_pos][i]
+                break
+
+
 
 
 class Builder:
@@ -127,20 +182,14 @@ class Builder:
         it with a selected_position set to something non-NaN.
 
         :param roster: Roster to fit the player on.
-        :type roster: list
+        :type roster: Container
         :param player: Player to try and find a roster spot for.
         :type player: pandas.Series
         :return: The new roster with the player in it.  If an open spot is not
-        available for the player then an LookupError assertion is returned.
+            available for the player then an LookupError assertion is returned.
         :rtype: list
         """
-        rpos = {}
-        for p in roster:
-            if p['selected_position'] in rpos:
-                rpos[p['selected_position']] += 1
-            else:
-                rpos[p['selected_position']] = 1
-        self.logger.debug("Roster positions: {}".format(rpos))
+        assert(isinstance(roster, Container))
         self.logger.debug("Fit {}: positions={}".format(
             player['name'], player['eligible_positions']))
         # Search if any of the players eligible_positions are open.  Then it is
@@ -148,8 +197,7 @@ class Builder:
         for pos in player.eligible_positions:
             if self._has_empty_position_slot(roster, pos):
                 self.logger.debug("Fit at empty position: {}".format(pos))
-                player.selected_position = pos
-                roster.append(player)
+                roster.change_position(player, pos)
                 return roster
 
         # List to keep track of the players swapped in a given fit.  This
@@ -160,9 +208,9 @@ class Builder:
         # Look through the other players already starting at the new players
         # positions.  If any of them can move to empty spot then we can fit.
         for pos in player.eligible_positions:
-            for occurance in range(self.pos_count[pos]):
+            for occurrence in range(self.pos_count[pos]):
                 self.logger.debug("Attempt swap at position: {}".format(pos))
-                plyr_at_pos = self._get_player_by_pos(roster, pos, occurance)
+                plyr_at_pos = roster.get_player_by_pos(pos, occurrence)
                 self.logger.debug("Swap out {}: {}".format(
                     plyr_at_pos['name'], pos))
                 if self._swap_eligible_pos_recurse(roster, plyr_at_pos,
@@ -170,75 +218,19 @@ class Builder:
                     assert(self._has_empty_position_slot(roster, pos))
                     self.logger.debug('{}: {} -> {}'.format(
                         player['name'], player['selected_position'], pos))
-                    player.selected_position = pos
-                    roster.append(player)
+                    roster.change_position(player, pos)
                     return roster
 
         raise LookupError("No space for player on roster")
 
-    def enumerate_fit(self, roster, player):
-        """Generate possible enumerations by fitting the player on the roster
-
-        This function will actively remove players in order to get the player
-        to fit.
-
-        :param roster: Base roster to try and add the player too
-        :type roster: list
-        :param player: Player to try and fit into the roster
-        :type player: pandas.Series
-        :return: An iterable that will enumerate all possible roster
-        combinations to get the player to fit.
-        :rtype: iterable
-        """
-        for pos in self.pos_count.keys():
-            for occurance in range(self.pos_count[pos]):
-                orig_roster = copy.deepcopy(roster)
-                pos_player = self._get_player_by_pos(roster, pos, occurance)
-                if pos_player is None:
-                    continue
-                pos_player.selected_position = np.nan
-                try:
-                    new_roster = self.fit_if_space(roster, player)
-
-                    # Remove anyone from the roster that doesn't have a
-                    # selected position
-                    pruned_roster = []
-                    for plyr in new_roster:
-                        if type(plyr['selected_position']) == str:
-                            pruned_roster.append(plyr)
-
-                    yield pruned_roster
-                except LookupError:
-                    pass
-                finally:
-                    roster = orig_roster
-                    player.selected_position = np.nan
-
     def max_players(self):
         return len(self.positions)
-
-    def _get_player_by_pos(self, roster, pos, occurance):
-        cum_occurance = 0
-        for plyr in roster:
-            if plyr.selected_position == pos:
-                if cum_occurance == occurance:
-                    return plyr
-                cum_occurance += 1
-        return None
-
-    def _get_num_players_at_pos(self, roster, pos):
-        """Return the number of players the roster has at the given position"""
-        cum_occurance = 0
-        for plyr in roster:
-            if plyr.selected_position == pos:
-                cum_occurance += 1
-        return cum_occurance
 
     def _has_empty_position_slot(self, roster, pos):
         # Not all positions may be tracked.  Player injury could be eligible to
         # go to the IR slot.
         if pos in self.pos_count:
-            num = self._get_num_players_at_pos(roster, pos)
+            num = roster.get_num_players_at_pos(pos)
             return num < self.pos_count[pos]
         else:
             return False
@@ -247,11 +239,11 @@ class Builder:
         """Recursively swap positions with players until all positions are used
 
         :param roster: The roster to work with
-        :type roster: pandas.DataFrame
+        :type roster: Roster
         :param player: The player to try and swap around.
         :type player: pandas.Series
         :param swapped_plyrs: A list of players already swapped in this
-        sequence of trying to fit the player.
+            sequence of trying to fit the player.
         :type swapped: list
         :return: True if we were able to swap to an empty position
         :rtype: Boolean
@@ -268,23 +260,23 @@ class Builder:
                 if self._has_empty_position_slot(roster, pos):
                     self.logger.debug('{}: {} -> {}'.format(
                         player['name'], player['selected_position'], pos))
-                    player.selected_position = pos
+                    assert(isinstance(player['selected_position'], str))
+                    roster.change_position(player, pos)
                     return True
 
         # Recursively check each of the positions that the player plays to
         # see if they can switch out to an empty spot.
         for pos in player.eligible_positions:
             if pos != player.selected_position:
-                for occurance in range(self.pos_count[pos]):
-                    other_plyr = self._get_player_by_pos(roster, pos,
-                                                         occurance)
+                for occurrence in range(self.pos_count[pos]):
+                    other_plyr = roster.get_player_by_pos(pos, occurrence)
                     assert(other_plyr is not None), "Nobody for " + pos
                     if self._swap_eligible_pos_recurse(roster, other_plyr,
                                                        swapped_plyrs):
                         assert(self._has_empty_position_slot(roster, pos))
                         self.logger.debug('{}: {} -> {}'.format(
                             player['name'], player['selected_position'], pos))
-                        player.selected_position = pos
+                        roster.change_position(player, pos)
                         return True
 
         swapped_plyrs.pop()
