@@ -378,15 +378,15 @@ class GeneticAlgorithm:
         :param lineups: Set of lineups to create a pool out of
         :return: DataFrame of all of the unique players in the lineups
         """
-        df = pd.DataFrame()
+        plyrs = []
         player_ids = []
         for lineup in lineups:
             for i, plyr in enumerate(lineup['players'].get_roster()):
                 # Avoid adding duplicate players to the pool
                 if plyr['player_id'] not in player_ids:
-                    df = df.append(plyr, ignore_index=True)
+                    plyrs.append(plyr)
                     player_ids.append(plyr['player_id'])
-        return df
+        return pd.DataFrame(plyrs)
 
     def _complete_lineup(self, ppool, rcont):
         """
