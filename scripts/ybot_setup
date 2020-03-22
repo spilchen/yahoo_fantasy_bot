@@ -200,8 +200,11 @@ if __name__ == '__main__':
         print("Choose what fangraphs prediction that will be manually downloaded:")
         print("1 - Depth Charts")
         print("2 - THE BAT")
+        print("3 - ATC")
+        print("4 - Steamer")
+        print("5 - ZiPS")
         fg_pred = int(input())
-        if fg_pred == 1 or fg_pred == 2:
+        if fg_pred in [1,2,3,4,5]:
             wizard.set_player_id_col_name("playerid")
             wizard.set_stat_projection("csv")
         else:
@@ -209,6 +212,13 @@ if __name__ == '__main__':
             os.sys.exit(-1)
 
         # Some stats need to be renamed or removed
+        if (wizard.has_stat("SV") or wizard.has_stat("NSV")) and fg_pred == 5:
+            if wizard.has_stat("SV"):
+                print("SV not in prediction source, removing stat")
+                wizard.remove_stat("SV")
+            if wizard.has_stat("NSV"):
+                print("NSV not in prediction source, removing stat")
+                wizard.remove_stat("NSV")
         if wizard.has_stat("NSV"):
             print("NSV not in prediction source, using SV instead")
             wizard.rename_stat("NSV", "SV")
