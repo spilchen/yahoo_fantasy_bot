@@ -549,67 +549,62 @@ class Scorer(Categories):
         res = res.append(self._sum_pit_prediction(df))
         return res
 
+    def _sum_stat(self, df, stat):
+        val = 0
+        for plyr in df.iterrows():
+            # Account for number of known starts (if applicable).
+            # Otherwise, just revert to an average over the remaining games
+            # on the team's schedule.
+            if self.use_weekly_schedule:
+                if plyr[1]['WK_GS'] > 0:
+                    val += plyr[1][stat] / plyr[1]['G'] \
+                           * plyr[1]['WK_GS']
+                elif plyr[1]['SEASON_G'] > 0:
+                    val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
+                           plyr[1]['WK_G']
+            else:
+                val += plyr[1][stat]
+        return val
+
     def _sum_hit_prediction(self, df):
-        res = pd.Series()
-        for stat in self.hit_count_cats + self.int_hit_cats:
-            val = 0
-            for plyr in df.iterrows():
-                if plyr[1]['roster_type'] != 'B':
-                    continue
-                if self.use_weekly_schedule:
-                    if plyr[1]['SEASON_G'] > 0:
-                        val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
-                            plyr[1]['WK_G']
-                else:
-                    val += plyr[1][stat]
-            res[stat] = val
+        hit_df = df[df['roster_type'] == 'B']
+
+        sum = pd.Series()
+        for stat in self.hit_count_cats:
+            sum[stat] = self._sum_stat(hit_df, stat)
+
+        temp_sum = pd.Series()
+        for stat in self.int_hit_cats:
+            temp_sum[stat] = self._sum_stat(hit_df, stat)
 
         # Handle ratio stats
         if 'AVG' in self.hit_ratio_cats:
-            res['AVG'] = res['H'] / res['AB'] if res['AB'] > 0 else 0
+            sum['AVG'] = temp_sum['H'] / temp_sum['AB'] if temp_sum['AB'] > 0 else 0
         if 'OBP' in self.hit_ratio_cats:
-            res['OBP'] = (res['H'] + res['BB']) / (res['AB'] + res['BB']) \
-                if res['AB'] + res['BB'] > 0 else 0
+            sum['OBP'] = (temp_sum['H'] + temp_sum['BB']) / (temp_sum['AB'] + temp_sum['BB']) \
+                if temp_sum['AB'] + temp_sum['BB'] > 0 else 0
 
-        # Drop the temporary values used to calculate the ratio stats
-        if len(self.int_hit_cats) > 0:
-            res = res.drop(index=self.int_hit_cats)
-
-        return res
+        return sum
 
     def _sum_pit_prediction(self, df):
-        res = pd.Series()
-        for stat in self.pit_count_cats + self.int_pit_cats:
-            val = 0
-            for plyr in df.iterrows():
-                if plyr[1]['roster_type'] != 'P':
-                    continue
-                # Account for number of known starts (if applicable).
-                # Otherwise, just revert to an average over the remaining games
-                # on the team's schedule.
-                if self.use_weekly_schedule:
-                    if plyr[1]['WK_GS'] > 0:
-                        val += plyr[1][stat] / plyr[1]['G'] \
-                            * plyr[1]['WK_GS']
-                    elif plyr[1]['WK_G'] > 0:
-                        val += plyr[1][stat] / plyr[1]['SEASON_G'] \
-                            * plyr[1]['WK_G']
-                else:
-                    val += plyr[1][stat]
-            res[stat] = val
+        pit_df = df[df['roster_type'] == 'P']
+
+        sum = pd.Series()
+        for stat in self.pit_count_cats:
+            sum[stat] = self._sum_stat(pit_df, stat)
+
+        temp_sum = pd.Series()
+        for stat in self.int_pit_cats:
+            temp_sum[stat] = self._sum_stat(pit_df, stat)
 
         # Handle ratio stats
         if 'WHIP' in self.pit_ratio_cats:
-            res['WHIP'] = (res['BB'] + res['H']) / res['IP'] \
-                if res['IP'] > 0 else 0
+            sum['WHIP'] = (temp_sum['BB'] + temp_sum['H']) / temp_sum['IP'] \
+                if temp_sum['IP'] > 0 else 0
         if 'ERA' in self.pit_ratio_cats:
-            res['ERA'] = res['ER'] * 9 / res['IP'] if res['IP'] > 0 else 0
+            sum['ERA'] = temp_sum['ER'] * 9 / temp_sum['IP'] if temp_sum['IP'] > 0 else 0
 
-        # Delete the temporary values used to calculate the ratio stats
-        if len(self.int_pit_cats) > 0:
-            res = res.drop(index=self.int_pit_cats)
-
-        return res
+        return sum
 
     def is_counting_stat(self, stat):
         return stat in ['R', 'HR', 'RBI', 'SB', 'W', 'SO', 'SV', 'HLD', 'K']

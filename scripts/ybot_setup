@@ -43,6 +43,8 @@ class Wizard:
         self.league_id = None
         self.leagues = None
         self.year = None
+        self.hitter_csv_file = ""
+        self.pitcher_csv_file = ""
 
     def oauth_json_gen(self):
         assert(not os.path.exists(self.oauth_file))
@@ -93,8 +95,17 @@ class Wizard:
         stat_cats = self.lg.stat_categories()
         self.stat_categories = ",".join([s['display_name'] for s in stat_cats])
 
+    def set_player_id_col_name(self, player_id_col_name):
+        self.player_id_col_name = player_id_col_name
+
     def set_stat_projection(self, stat_proj):
         self.stat_proj = stat_proj
+
+    def set_hitters_csv_file(self, fname):
+        self.hitters_csv_file = fname
+
+    def set_pitchers_csv_file(self, fname):
+        self.pitchers_csv_file = fname
 
     def render(self, file_name):
         env = Environment(loader=PackageLoader('yahoo_fantasy_bot',
@@ -104,7 +115,10 @@ class Wizard:
             f.write(template.render(oauth_file=self.oauth_file,
                                     league_id=self.league_id,
                                     stat_categories=self.stat_categories,
-                                    stat_projection=self.stat_proj))
+                                    stat_projection=self.stat_proj,
+                                    player_id_column_name=self.player_id_col_name,
+                                    hitters_csv_file=self.hitters_csv_file,
+                                    pitchers_csv_file=self.pitchers_csv_file))
 
 
 if __name__ == '__main__':
@@ -153,15 +167,42 @@ if __name__ == '__main__':
     wizard.set_league_id(league_id)
     print("")
     print("Choose source for stat projections:")
-    print("1 - Last season stats")
-    print("2 - Current season stats")
-    proj_input = int(input())
-    if proj_input == 1:
-        wizard.set_stat_projection("yahoo_lastseason")
-    elif proj_input == 2:
-        wizard.set_stat_projection("yahoo")
+    print("1 - Yahoo!")
+    if sport_code == 'mlb':
+        print("2 - CSV manually downloaded from fangraphs.com")
+    source_input = int(input())
+    if source_input == 1:
+        wizard.set_player_id_col_name('player_id')
+        print("")
+        print("Choose source for stat projections:")
+        print("1 - Last season stats")
+        print("2 - Current season stats")
+        proj_input = int(input())
+        if proj_input == 1:
+            wizard.set_stat_projection("yahoo_lastseason")
+        elif proj_input == 2:
+            wizard.set_stat_projection("yahoo")
+        else:
+            print("Not a valid selection.  Pick a number from the list above.")
+            os.sys.exit(-1)
+    elif source_input == 2 and sport_code == 'mlb':
+        print("")
+        print("Choose what fangraphs predection that will be manually downloaded:")
+        print("1 - Depth Charts")
+        fg_pred = int(input())
+        if fg_pred == 1:
+            wizard.set_player_id_col_name("playerid")
+            wizard.set_stat_projection("csv")
+        else:
+            print("Not a valid selection.  Pick a number from the list above")
+            os.sys.exit(-1)
+        print("")
+        print("Enter the path of the hitter CSV file that will be manually downloaded:")
+        wizard.set_hitters_csv_file(input())
+        print("Enter the path of the pitcher CSV file that will be manually downloaded:")
+        wizard.set_pitchers_csv_file(input())
     else:
-        print("Not a valid selection.  Pick a number from the list above.")
+        print("Not a valid selection.  Pick a number from the list above")
         os.sys.exit(-1)
     print("")
     print('Building config file for "{}"'.format(league_id))
