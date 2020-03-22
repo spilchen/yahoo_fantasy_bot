@@ -93,7 +93,17 @@ class Wizard:
         self.league_id = league_id
         self.lg = self.gm.to_league(league_id)
         stat_cats = self.lg.stat_categories()
-        self.stat_categories = ",".join([s['display_name'] for s in stat_cats])
+        self.stat_categories = [s['display_name'] for s in stat_cats]
+
+    def has_stat(self, stat):
+        return stat in self.stat_categories
+
+    def remove_stat(self, stat):
+        self.stat_categories.remove(stat)
+
+    def rename_stat(self, old_stat, new_stat):
+        self.remove_stat(old_stat)
+        self.stat_categories.append(new_stat)
 
     def set_player_id_col_name(self, player_id_col_name):
         self.player_id_col_name = player_id_col_name
@@ -114,7 +124,7 @@ class Wizard:
         with open(file_name, 'w') as f:
             f.write(template.render(oauth_file=self.oauth_file,
                                     league_id=self.league_id,
-                                    stat_categories=self.stat_categories,
+                                    stat_categories=",".join(self.stat_categories),
                                     stat_projection=self.stat_proj,
                                     player_id_column_name=self.player_id_col_name,
                                     hitters_csv_file=self.hitters_csv_file,
@@ -187,15 +197,27 @@ if __name__ == '__main__':
             os.sys.exit(-1)
     elif source_input == 2 and sport_code == 'mlb':
         print("")
-        print("Choose what fangraphs predection that will be manually downloaded:")
+        print("Choose what fangraphs prediction that will be manually downloaded:")
         print("1 - Depth Charts")
+        print("2 - THE BAT")
         fg_pred = int(input())
-        if fg_pred == 1:
+        if fg_pred == 1 or fg_pred == 2:
             wizard.set_player_id_col_name("playerid")
             wizard.set_stat_projection("csv")
         else:
             print("Not a valid selection.  Pick a number from the list above")
             os.sys.exit(-1)
+
+        # Some stats need to be renamed or removed
+        if wizard.has_stat("NSV"):
+            print("NSV not in prediction source, using SV instead")
+            wizard.rename_stat("NSV", "SV")
+        if wizard.has_stat("K"):
+            wizard.rename_stat("K", "SO")
+        if wizard.has_stat("HLD") and fg_pred != 1:
+            print("HLD not in prediction source, removing stat")
+            wizard.remove_stat("HLD")
+
         print("")
         print("Enter the path of the hitter CSV file that will be manually downloaded:")
         wizard.set_hitters_csv_file(input())
