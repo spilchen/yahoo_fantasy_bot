@@ -173,7 +173,7 @@ class GeneticAlgorithm:
         :return: Initial seed lineup
         :rtype: list
         """
-        lineup = roster.Container(None, None)
+        lineup = roster.Container()
         for plyr in locked_plyrs:
             try:
                 lineup = self.roster_bldr.fit_if_space(lineup, plyr)

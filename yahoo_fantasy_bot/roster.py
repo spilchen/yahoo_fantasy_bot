@@ -7,27 +7,11 @@ from yahoo_fantasy_bot import utils
 
 
 class Container:
-    """Class that holds a roster of players
-
-    :param lg: Yahoo! league
-    :type lg: yahoo_fantasy_api.league.League
-    :param team: Yahoo! Team to do the predictions for
-    :type team: yahoo_fantasy_api.team.Team
-    """
-    def __init__(self, lg, team):
-        # TODO - decouple this class from lg/team.  Have an API to allow
-        #  the caller to set a roster from Yahoo!
-        if lg is not None:
-            self.week = lg.current_week() + 1
-            if self.week > lg.end_week():
-                raise RuntimeError("Season over no more weeks to predict")
-            full_roster = team.roster(self.week)
-            self.roster = [e for e in full_roster
-                           if e["selected_position"] not in ["IR", "BN"]]
-        else:
-            self.roster = []
-        self.pos_count = self._compute_pos_count()
-        self.plyr_by_pos = self._compute_player_by_pos()
+    """Class that holds a roster of players"""
+    def __init__(self):
+        self.roster = []
+        self.pos_count = {}
+        self.plyr_by_pos = {}
 
     def get_roster(self):
         return self.roster
@@ -119,28 +103,6 @@ class Container:
                     return plyr
                 cum_occurrence += 1
         return None
-
-    def _compute_pos_count(self):
-        """Compute the map of position counts"""
-        pos_count = {}
-        for p in self.roster:
-            assert (isinstance(p['selected_position'], str))
-            if p['selected_position'] in pos_count:
-                pos_count[p['selected_position']] += 1
-            else:
-                pos_count[p['selected_position']] = 1
-        return pos_count
-
-    def _compute_player_by_pos(self):
-        """Compute a map of player by their position"""
-        plyr_by_pos = {}
-        for p in self.roster:
-            assert (isinstance(p['selected_position'], str))
-            pos = p['selected_position']
-            if pos not in plyr_by_pos:
-                plyr_by_pos[pos] = []
-            plyr_by_pos[pos].append(p)
-        return plyr_by_pos
 
     def _incr_pos_count(self, pos):
         if pos in self.pos_count:

@@ -305,9 +305,8 @@ class ManagerBot:
             lineups = []
             for tm_key in self.lg.teams().keys():
                 tm = self.lg.to_team(tm_key)
-                rcont = roster.Container(self.lg, tm)
-                lineups.append(self._call_predict(rcont.get_roster(),
-                                                  fail_on_missing=True))
+                tm_roster = self._get_roster_for_team(tm)
+                lineups.append(self._call_predict(tm_roster, fail_on_missing=True))
             self.logger.info("All lineups fetched.")
             return lineups
 
@@ -336,8 +335,8 @@ class ManagerBot:
             print("Not a valid team: {}:".format(opp_team_key))
             return(None, None)
 
-        opp_team = roster.Container(self.lg, self.lg.to_team(opp_team_key))
-        opp_df = self._call_predict(opp_team.get_roster(), fail_on_missing=True)
+        tm_roster = self._get_roster_for_team(self.lg.to_team(opp_team_key))
+        opp_df = self._call_predict(tm_roster, fail_on_missing=True)
         opp_sum = self.scorer.summarize(opp_df)
         return (team_name, opp_sum)
 
@@ -698,6 +697,21 @@ class ManagerBot:
             return self.pred_bldr.predict(
                 plyrs, fail_on_missing=fail_on_missing,
                 **kwargs)
+
+    def _get_roster_for_team(self, team):
+        """Get all the players that are active for a given team
+
+        :param team: Team to get roster for
+        :type team: yahoo_fantasy_api.Team
+        :return: Roster of players
+        :rtype: list
+        """
+        week = self.lg.current_week() + 1
+        if week > self.lg.end_week():
+            raise RuntimeError("Season over no more weeks to predict")
+        full_roster = team.roster(week)
+        return [e for e in full_roster
+                if e["selected_position"] not in ["IR", "BN", "IL"]]
 
 
 class RosterChanger:
