@@ -53,10 +53,11 @@ class ScoreComparer:
         assert(self.opp_sum is not None), "Must call set_opponent() first"
         assert(self.stdevs is not None)
         stddev_score = 0
-        for (c_myname, c_myval), (c_opname, c_opval) in \
-                zip(score_sum.items(), self.opp_sum.items()):
-            assert(c_myname == c_opname)
-            c_stdev = self.stdevs[c_myname].iloc(0)[0]
+        for (stat, c_opval) in self.opp_sum.items():
+            assert(stat in score_sum)
+            assert(stat in self.stdevs)
+            c_myval = score_sum[stat]
+            c_stdev = self.stdevs[stat].iloc(0)[0]
             v = (c_myval - c_opval) / c_stdev
             # Cap the value at a multiple of the standard deviation.  We do
             # this because we don't want to favour lineups that simply own
@@ -65,7 +66,7 @@ class ScoreComparer:
             # do well in a category, and you are going to lose, the down side
             # is capped.
             v = min(v, self.stdev_cap * c_stdev)
-            if not self.scorer.is_highest_better(c_myname):
+            if not self.scorer.is_highest_better(stat):
                 v = v * -1
             stddev_score += v
         return stddev_score
@@ -356,6 +357,7 @@ class ManagerBot:
             # Only use bench players that are able to play
             avail_bench = []
             unavail_bench = []
+            # SPILLY - TODO self.bench is empty when usin csv, broken for Yahoo
             for p in self.bench:
                 if p.status == '':
                     avail_bench.append(p)

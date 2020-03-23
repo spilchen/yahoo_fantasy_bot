@@ -15,6 +15,7 @@ class Container:
         self.roster = []
         self.pos_count = {}
         self.plyr_by_pos = {}
+        StatAccumulator = self._get_scoreaccumulator_class(cfg)
         self.stat_accumulator = StatAccumulator(cfg)
 
     def get_roster(self):
@@ -132,36 +133,11 @@ class Container:
                 del self.plyr_by_pos[old_pos][i]
                 break
 
-
-class StatAccumulator:
-    """Class that aggregates stats for a bunch of players"""
-    def __init__(self, cfg):
-        Scorer = self._get_scorer_class(cfg)
-        self.scorer = Scorer(cfg)
-
-    def add_player(self, plyr):
-        pass
-
-    def remove_player(self, plyr):
-        pass
-
-    def get_summary(self, roster):
-        """Return a summary of the stats for players in the roster
-
-        :param roster: List of players we want go get stats for
-        :type roster: list
-        :return: Summary of key stats for the players
-        :rtype: pandas.DataFrame
-        """
-        df = pd.DataFrame(data=roster)
-        return self.scorer.summarize(df)
-
-    def _get_scorer_class(self, cfg):
+    def _get_scoreaccumulator_class(self, cfg):
         module = importlib.import_module(
-            cfg['Scorer']['module'],
-            package=cfg['Scorer']['package'])
-        return getattr(module, cfg['Scorer']['class'])
-
+            cfg['ScoreAccumulator']['module'],
+            package=cfg['ScoreAccumulator']['package'])
+        return getattr(module, cfg['ScoreAccumulator']['class'])
 
 
 class Builder:

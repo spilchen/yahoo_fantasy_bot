@@ -51,8 +51,8 @@ class Yahoo:
         elif self.game_code == 'mlb':
             hitters_fn = self._create_csv(stats, 'B', 'hitters.csv')
             pitchers_fn = self._create_csv(stats, 'P', 'pitcher.csv')
-            print('File names created: hitters={}, pitchers={}'.
-                  format(hitters_fn, pitchers_fn))
+            logger.info('File names created: hitters={}, pitchers={}'.
+                        format(hitters_fn, pitchers_fn))
             return {'hitters': {'file_name': hitters_fn,
                                 'index_col': 'name',
                                 'header': 0},

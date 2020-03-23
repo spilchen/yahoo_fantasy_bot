@@ -43,8 +43,9 @@ class Wizard:
         self.league_id = None
         self.leagues = None
         self.year = None
-        self.hitter_csv_file = ""
-        self.pitcher_csv_file = ""
+        self.hitters_csv_file = ""
+        self.pitchers_csv_file = ""
+        self.prediction_named_args = ""
 
     def oauth_json_gen(self):
         assert(not os.path.exists(self.oauth_file))
@@ -107,6 +108,7 @@ class Wizard:
 
     def set_player_id_col_name(self, player_id_col_name):
         self.player_id_col_name = player_id_col_name
+        self.prediction_named_args = "scrape_id_system={}".format(player_id_col_name)
 
     def set_stat_projection(self, stat_proj):
         self.stat_proj = stat_proj
@@ -128,7 +130,8 @@ class Wizard:
                                     stat_projection=self.stat_proj,
                                     player_id_column_name=self.player_id_col_name,
                                     hitters_csv_file=self.hitters_csv_file,
-                                    pitchers_csv_file=self.pitchers_csv_file))
+                                    pitchers_csv_file=self.pitchers_csv_file,
+                                    prediction_named_args=self.prediction_named_args))
 
 
 if __name__ == '__main__':

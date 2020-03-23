@@ -89,7 +89,6 @@ class Builder:
             return self.ppool[self.ppool['playerid'].isin(fg_ids)]
 
     def predict(self, plyrs, fail_on_missing=True,
-                lk_id_system='yahoo_id',
                 scrape_id_system='playerid', team_has='abbrev'):
         """Build a dataset of hitting and pitching predictions for the week
 
@@ -103,8 +102,6 @@ class Builder:
         :param fail_on_missing: True we are to fail if any player in
             roster_cont can't be found in the prediction data set.  Set this to
             false to simply filter those out.
-        :param lk_id_system: Name of the ID column in the baseball_id Lookup
-        :type lk_id_system: str
         :param scrape_id_system: Name of the ID column in the scraped data that
             has the ID to match with Lookup
         :type scrape_id_system: str
@@ -244,6 +241,8 @@ class Builder:
             one_lk = one_lk.assign(status=status_series)
             name_series = pd.Series([plyr['name']], index=one_lk.index)
             one_lk = one_lk.assign(name=name_series)
+            pt_series = pd.Series([plyr['position_type']], index=one_lk.index)
+            one_lk = one_lk.assign(position_type=pt_series)
             if 'percent_owned' in plyr:
                 pct_series = pd.Series([plyr['percent_owned']],
                                        index=one_lk.index)
@@ -549,21 +548,22 @@ class Scorer(Categories):
         res = res.append(self._sum_pit_prediction(df))
         return res
 
+    def sum_stat_for_player(self, plyr, stat):
+        # Account for number of known starts (if applicable).
+        # Otherwise, just revert to an average over the remaining games
+        # on the team's schedule.
+        if self.use_weekly_schedule:
+            if plyr['WK_GS'] > 0:
+                return plyr[stat] / plyr['G'] * plyr['WK_GS']
+            elif plyr['SEASON_G'] > 0:
+                return plyr[stat] / plyr['SEASON_G'] * plyr['WK_G']
+        else:
+            return plyr[stat]
+
     def _sum_stat(self, df, stat):
         val = 0
         for plyr in df.iterrows():
-            # Account for number of known starts (if applicable).
-            # Otherwise, just revert to an average over the remaining games
-            # on the team's schedule.
-            if self.use_weekly_schedule:
-                if plyr[1]['WK_GS'] > 0:
-                    val += plyr[1][stat] / plyr[1]['G'] \
-                           * plyr[1]['WK_GS']
-                elif plyr[1]['SEASON_G'] > 0:
-                    val += plyr[1][stat] / plyr[1]['SEASON_G'] * \
-                           plyr[1]['WK_G']
-            else:
-                val += plyr[1][stat]
+            val += self.sum_stat_for_player(plyr[1], stat)
         return val
 
     def _sum_hit_prediction(self, df):
@@ -611,3 +611,67 @@ class Scorer(Categories):
 
     def is_highest_better(self, stat):
         return stat not in ['ERA', 'WHIP']
+
+
+class StatAccumulator(Categories):
+    """Class that aggregates stats for a bunch of players"""
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.scorer = Scorer(cfg)
+        self.sum = pd.Series()
+        for stat in self.hit_count_cats + self.hit_ratio_cats + self.pit_count_cats + self.pit_ratio_cats:
+            self.sum[stat] = 0.0
+        self.hit_temp_count_sum = pd.Series()
+        for stat in self.int_hit_cats:
+            self.hit_temp_count_sum[stat] = 0.0
+        self.pit_temp_count_sum = pd.Series()
+        for stat in self.int_pit_cats:
+            self.pit_temp_count_sum[stat] = 0.0
+
+    def add_player(self, plyr):
+        self._accum_stats(+1, plyr)
+
+    def remove_player(self, plyr):
+        self._accum_stats(-1, plyr)
+
+    def get_summary(self, roster):
+        """Return a summary of the stats for players in the roster
+
+        :param roster: List of players we want go get stats for
+        :type roster: list
+        :return: Summary of key stats for the players
+        :rtype: pandas.Series
+        """
+        if 'WHIP' in self.pit_ratio_cats:
+            self.sum['WHIP'] = (self.pit_temp_count_sum['BB'] + self.pit_temp_count_sum['H']) \
+                               / self.pit_temp_count_sum['IP'] \
+                if self.pit_temp_count_sum['IP'] > 0 else 0
+        if 'ERA' in self.pit_ratio_cats:
+            self.sum['ERA'] = self.pit_temp_count_sum['ER'] * 9 / self.pit_temp_count_sum['IP'] \
+                if self.pit_temp_count_sum['IP'] > 0 else 0
+        if 'AVG' in self.hit_ratio_cats:
+            self.sum['AVG'] = self.hit_temp_count_sum['H'] / self.hit_temp_count_sum['AB'] \
+                if self.hit_temp_count_sum['AB'] > 0 else 0
+        if 'OBP' in self.hit_ratio_cats:
+            if self.hit_temp_count_sum['AB'] + self.hit_temp_count_sum['BB'] > 0:
+                v = (self.hit_temp_count_sum['H'] + self.hit_temp_count_sum['BB']) / \
+                    (self.hit_temp_count_sum['AB'] + self.hit_temp_count_sum['BB'])
+            else:
+                v = 0
+            self.sum['OBP'] = v
+        return self.sum
+
+    def _accum_stats(self, modifier, plyr):
+        assert ('position_type' in plyr)
+        if plyr['position_type'] == 'B':
+            for stat in self.hit_count_cats:
+                self.sum[stat] += modifier * self.scorer.sum_stat_for_player(plyr, stat)
+            for stat in self.int_hit_cats:
+                self.hit_temp_count_sum[stat] += modifier * self.scorer.sum_stat_for_player(plyr, stat)
+        elif plyr['position_type'] == 'P':
+            for stat in self.pit_count_cats:
+                self.sum[stat] += modifier * self.scorer.sum_stat_for_player(plyr, stat)
+            for stat in self.int_pit_cats:
+                self.pit_temp_count_sum[stat] += modifier * self.scorer.sum_stat_for_player(plyr, stat)
+        else:
+            assert (False), "Unknown position type: {}".format(plyr['position_type'])

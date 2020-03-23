@@ -301,3 +301,26 @@ class Scorer:
 
     def is_highest_better(self, stat):
         return True
+
+
+class StatAccumulator:
+    """Class that aggregates stats for a bunch of players"""
+    def __init__(self, cfg):
+        self.scorer = Scorer(cfg)
+
+    def add_player(self, plyr):
+        pass
+
+    def remove_player(self, plyr):
+        pass
+
+    def get_summary(self, roster):
+        """Return a summary of the stats for players in the roster
+
+        :param roster: List of players we want go get stats for
+        :type roster: list
+        :return: Summary of key stats for the players
+        :rtype: pandas.Series
+        """
+        df = pd.DataFrame(data=roster)
+        return self.scorer.summarize(df)
