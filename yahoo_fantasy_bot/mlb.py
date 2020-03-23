@@ -202,7 +202,7 @@ class Builder:
         if len(one_lk.index) == 0:
             one_lk = self.id_lookup.from_names(
                 [plyr['name']], filter_missing='yahoo_id')
-            # Failback to a pure-name lookup.  There have been instances
+            # Fallback to a pure-name lookup.  There have been instances
             # with hitter/pitchers where they have two IDs: one for
             # pitchers and one for hitters.  The id_lookup only keeps
             # track of one of those IDs.  We will strip off the '(Batter)'
@@ -215,7 +215,7 @@ class Builder:
                     name = plyr['name']
                     # Get rid of any accents
                     name = utils.normalized(name)
-                    one_lk = self.id_lookup.from_names([name])
+                one_lk = self.id_lookup.from_names([name])
 
             if len(one_lk.index) != 1:
                 if fail_on_missing:

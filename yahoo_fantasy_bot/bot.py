@@ -43,17 +43,15 @@ class ScoreComparer:
         """
         self.opp_sum = opp_sum
 
-    def compute_score(self, lineup):
+    def compute_score(self, score_sum):
         """
         Calculate a lineup score by comparing it against the standard devs
 
-        :param lineup: Lineup to compute standard deviation from
+        :param score_sum: Score summary of your lineup
         :return: Standard deviation score
         """
         assert(self.opp_sum is not None), "Must call set_opponent() first"
         assert(self.stdevs is not None)
-        df = pd.DataFrame(data=lineup, columns=lineup[0].index)
-        score_sum = self.scorer.summarize(df)
         stddev_score = 0
         for (c_myname, c_myval), (c_opname, c_opval) in \
                 zip(score_sum.items(), self.opp_sum.items()):
@@ -63,7 +61,7 @@ class ScoreComparer:
             # Cap the value at a multiple of the standard deviation.  We do
             # this because we don't want to favour lineups that simply own
             # a category.  A few standard deviation is enough to provide a
-            # cushion.  It also allows you to punt a caategory, if you don't
+            # cushion.  It also allows you to punt a category, if you don't
             # do well in a category, and you are going to lose, the down side
             # is capped.
             v = min(v, self.stdev_cap * c_stdev)
@@ -467,7 +465,7 @@ class ManagerBot:
 
         df = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
         my_sum = self.scorer.summarize(df)
-        score = self.score_comparer.compute_score(self.lineup)
+        score = self.score_comparer.compute_score(my_sum)
         print("Against '{}' your roster has a score of: {}".
               format(self.opp_team_name, score))
         print("")

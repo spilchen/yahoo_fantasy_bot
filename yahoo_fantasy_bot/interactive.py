@@ -124,7 +124,9 @@ class Driver:
     def _manual_select_players(self):
         self.bot.print_roster()
         self.bot.show_score()
-        old_score = self.bot.score_comparer.compute_score(self.bot.lineup)
+        df = pd.DataFrame(data=self.bot.lineup)
+        score_sum = self.bot.scorer.summarize(df)
+        old_score = self.bot.score_comparer.compute_score(score_sum)
         print("Enter the name of the player to remove: ")
         pname_rem = input().rstrip()
         print("Enter the name of the player to add (leave blank for none): ")
@@ -140,7 +142,9 @@ class Driver:
         self.bot.print_roster()
         if pname_add:
             self.bot.show_score()
-            new_score = self.bot.score_comparer.compute_score(self.bot.lineup)
+            df = pd.DataFrame(data=self.bot.lineup)
+            score_sum = self.bot.scorer.summarize(df)
+            new_score = self.bot.score_comparer.compute_score(score_sum)
             improved = new_score > old_score
             print("This lineup has {}".format("improved" if improved
                                               else "declined"))
