@@ -173,7 +173,7 @@ class GeneticAlgorithm:
         :return: Initial seed lineup
         :rtype: list
         """
-        lineup = roster.Container()
+        lineup = roster.Container(self.cfg)
         for plyr in locked_plyrs:
             try:
                 lineup = self.roster_bldr.fit_if_space(lineup, plyr)
@@ -209,8 +209,7 @@ class GeneticAlgorithm:
         sids = self._to_sids(lineup)
         if self._is_dup_sids(sids):
             return
-        df = pd.DataFrame(data=lineup.get_roster())
-        stat_sum = self.score_comparer.scorer.summarize(df)
+        stat_sum = lineup.compute_stat_summary()
         score = self.score_comparer.compute_score(stat_sum)
         self.population.append({'players': lineup,
                                 'score': score,
@@ -354,8 +353,7 @@ class GeneticAlgorithm:
         offspring = [mates[0], mates[1]]
         for _ in range(int(self.cfg['LineupOptimizer']['numOffspring'])):
             plyrs = self._complete_lineup(ppool, self.seed_lineup)
-            df = pd.DataFrame(data=plyrs.get_roster())
-            stat_sum = self.score_comparer.scorer.summarize(df)
+            stat_sum = plyrs.compute_stat_summary()
             score = self.score_comparer.compute_score(stat_sum)
             offspring.append({'players': plyrs, 'score': score,
                               'id': self._gen_lineup_id(),
@@ -442,8 +440,7 @@ class GeneticAlgorithm:
             sids = self._to_sids(new_plyrs)
             if self._is_dup_sids(sids):
                 continue
-            df = pd.DataFrame(data=new_plyrs.get_roster())
-            stat_sum = self.score_comparer.scorer.summarize(df)
+            stat_sum = new_plyrs.compute_stat_summary()
             score = self.score_comparer.compute_score(stat_sum)
             if score <= lineup['score']:
                 continue

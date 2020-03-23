@@ -1,17 +1,21 @@
 #!/usr/bin/python
 
 import copy
+import importlib
 import logging
 import numpy as np
+import pandas as pd
+
 from yahoo_fantasy_bot import utils
 
 
 class Container:
     """Class that holds a roster of players"""
-    def __init__(self):
+    def __init__(self, cfg):
         self.roster = []
         self.pos_count = {}
         self.plyr_by_pos = {}
+        self.stat_accumulator = StatAccumulator(cfg)
 
     def get_roster(self):
         return self.roster
@@ -24,6 +28,7 @@ class Container:
         """
         assert(offset >= 0 and offset < len(self.roster))
         del_plyr = self.roster[offset]
+        self.stat_accumulator.remove_player(del_plyr)
         pos = del_plyr['selected_position']
         self.pos_count[pos] -= 1
         self._del_from_plyr_by_pos(del_plyr)
@@ -38,6 +43,7 @@ class Container:
         :type player: dict
         """
         self.roster.append(player)
+        self.stat_accumulator.add_player(player)
         pos = player['selected_position']
         self._incr_pos_count(pos)
         if pos not in self.plyr_by_pos:
@@ -104,6 +110,14 @@ class Container:
                 cum_occurrence += 1
         return None
 
+    def compute_stat_summary(self):
+        """Compute a summary of key stats for all players in the roster
+
+        :return: Stat summary of key stats
+        :rtype: pandas.DataFrame
+        """
+        return self.stat_accumulator.get_summary(self.roster)
+
     def _incr_pos_count(self, pos):
         if pos in self.pos_count:
             self.pos_count[pos] += 1
@@ -118,6 +132,35 @@ class Container:
                 del self.plyr_by_pos[old_pos][i]
                 break
 
+
+class StatAccumulator:
+    """Class that aggregates stats for a bunch of players"""
+    def __init__(self, cfg):
+        Scorer = self._get_scorer_class(cfg)
+        self.scorer = Scorer(cfg)
+
+    def add_player(self, plyr):
+        pass
+
+    def remove_player(self, plyr):
+        pass
+
+    def get_summary(self, roster):
+        """Return a summary of the stats for players in the roster
+
+        :param roster: List of players we want go get stats for
+        :type roster: list
+        :return: Summary of key stats for the players
+        :rtype: pandas.DataFrame
+        """
+        df = pd.DataFrame(data=roster)
+        return self.scorer.summarize(df)
+
+    def _get_scorer_class(self, cfg):
+        module = importlib.import_module(
+            cfg['Scorer']['module'],
+            package=cfg['Scorer']['package'])
+        return getattr(module, cfg['Scorer']['class'])
 
 
 
