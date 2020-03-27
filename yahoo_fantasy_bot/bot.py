@@ -357,7 +357,6 @@ class ManagerBot:
             # Only use bench players that are able to play
             avail_bench = []
             unavail_bench = []
-            # SPILLY - TODO self.bench is empty when usin csv, broken for Yahoo
             for p in self.bench:
                 if p.status == '':
                     avail_bench.append(p)
@@ -405,24 +404,21 @@ class ManagerBot:
     def sync_lineup(self):
         """Reset the local lineup to the one that is set in Yahoo!"""
         yahoo_roster = self._get_orig_roster()
-        roster_ids = [{'player_id': e['player_id'], 'name': e['name']}
-                      for e in yahoo_roster]
         bench_ids = [e['player_id'] for e in yahoo_roster
                      if e['selected_position'] == 'BN']
         ir_ids = [e['player_id'] for e in yahoo_roster
                   if (e['selected_position'] == 'DL' or
                       e['selected_position'] == 'IR')]
-        sel_plyrs = self.pred_bldr.select_players(roster_ids)
         lineup = []
         bench = []
         ir = []
-        for plyr in sel_plyrs.iterrows():
-            if plyr[1]['player_id'] in bench_ids:
-                bench.append(plyr[1])
-            elif plyr[1]['player_id'] in ir_ids:
-                ir.append(plyr[1])
+        for plyr in self.pred_bldr.select_players(yahoo_roster):
+            if plyr['player_id'] in bench_ids:
+                bench.append(plyr)
+            elif plyr['player_id'] in ir_ids:
+                ir.append(plyr)
             else:
-                lineup.append(plyr[1])
+                lineup.append(plyr)
         self.lineup = lineup
         self.bench = bench
         self.injury_reserve = ir

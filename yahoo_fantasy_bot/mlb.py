@@ -77,16 +77,17 @@ class Builder:
         :return: List of players from the player pool
         """
         if self.source.startswith("yahoo"):
-            yahoo_ids = [e['player_id'] for e in plyrs]
-            return self.ppool[self.ppool['player_id'].isin(yahoo_ids)]
+            for plyr in plyrs:
+                stats = self.ppool[self.ppool['player_id'] == plyr['player_id']].to_dict('record')[0]
+                dict = {**stats, **plyr}
+                yield pd.Series(dict)
         else:
             assert(self.source == 'csv')
-            # Convert all of the player IDs to fan graph IDs
-            fg_ids = []
             for plyr in plyrs:
-                lk = self._lookup_plyr(plyr, True)
-                fg_ids.append(lk['fg_id'])
-            return self.ppool[self.ppool['playerid'].isin(fg_ids)]
+                meta = self._lookup_plyr(plyr, True).to_dict('record')[0]
+                stats = self.ppool[self.ppool['playerid'] == meta['fg_id']].to_dict('record')[0]
+                dict = {**meta, **stats, **plyr}
+                yield pd.Series(dict)
 
     def predict(self, plyrs, fail_on_missing=True,
                 scrape_id_system='playerid', team_has='abbrev'):
@@ -123,9 +124,11 @@ class Builder:
             # intersection between the player pool and the players from the
             # roster.
             if self.source.startswith("yahoo"):
+                # SPILLY this merge causes some column names to have an _x.  This seems to be a byproduct of the command
                 df = pd.merge(lk, self.ppool, how='inner',
                               left_on=['yahoo_id'],
-                              right_on=[scrape_id_system])
+                              right_on=[scrape_id_system],
+                              suffixes=('', '_dup'))
             else:
                 assert(self.source == 'csv')
                 df = pd.merge(lk, self.ppool, how='inner', left_on=['fg_id'],
@@ -440,6 +443,7 @@ class PlayerPrinter(Categories):
         for pos in ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'Util',
                     'SP', 'RP']:
             for plyr in lineup:
+                plyr = plyr.to_dict()
                 if plyr['selected_position'] == pos:
                     if pos in ["SP", "RP"]:
                         if not pit_header_printed:
