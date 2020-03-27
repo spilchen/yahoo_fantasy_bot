@@ -404,6 +404,15 @@ class ManagerBot:
     def sync_lineup(self):
         """Reset the local lineup to the one that is set in Yahoo!"""
         yahoo_roster = self._get_orig_roster()
+        all_ids = [e['player_id'] for e in yahoo_roster]
+
+        # We need percent owned for all players returned in the Yahoo! roster
+        for po_plyr in self.lg.percent_owned(all_ids):
+            for r_plyr in yahoo_roster:
+                if po_plyr['player_id'] == r_plyr['player_id']:
+                    r_plyr['percent_owned'] = po_plyr['percent_owned']
+                    break
+
         bench_ids = [e['player_id'] for e in yahoo_roster
                      if e['selected_position'] == 'BN']
         ir_ids = [e['player_id'] for e in yahoo_roster
@@ -446,7 +455,9 @@ class ManagerBot:
         thres = int(self.cfg['LineupOptimizer']['lockPlayersAbovePctOwn'])
         for plyr in self.lineup:
             if plyr['percent_owned'] >= thres:
-                locked_plyrs.append(plyr)
+                clone_plyr = copy.deepcopy(plyr)
+                clone_plyr['selected_position'] = np.nan
+                locked_plyrs.append(clone_plyr)
 
         best_lineup = optimizer_func(self.cfg, self.score_comparer,
                                      self.my_team_bldr,

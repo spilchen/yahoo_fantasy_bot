@@ -124,7 +124,6 @@ class Builder:
             # intersection between the player pool and the players from the
             # roster.
             if self.source.startswith("yahoo"):
-                # SPILLY this merge causes some column names to have an _x.  This seems to be a byproduct of the command
                 df = pd.merge(lk, self.ppool, how='inner',
                               left_on=['yahoo_id'],
                               right_on=[scrape_id_system],
