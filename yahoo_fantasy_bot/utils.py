@@ -91,20 +91,31 @@ class TeamCache(CacheBase):
     def load_league_lineup(self, expiry, loader):
         return self.run_loader(self.league_lineup_file(), expiry, loader)
 
-
-class LeagueCache(CacheBase):
-    def __init__(self, cfg):
-        super(LeagueCache, self).__init__(
-            cfg, "{}/{}".format(cfg['Cache']['dir'], cfg['League']['id']))
-
     def free_agents_cache_file(self):
         return "{}/free_agents.pkl".format(self.cache_dir)
 
     def load_free_agents(self, expiry, loader):
         return self.run_loader(self.free_agents_cache_file(), expiry, loader)
 
+    def remove(self):
+        for fn in [self.blacklist_cache_file(), self.prediction_builder_file(),
+                   self.league_lineup_file(), self.free_agents_cache_file()]:
+            if os.path.exists(fn):
+                os.remove(fn)
+
+
+class LeagueCache(CacheBase):
+    def __init__(self, cfg):
+        super(LeagueCache, self).__init__(
+            cfg, "{}/{}".format(cfg['Cache']['dir'], cfg['League']['id']))
+
     def statics(self):
         return "{}/league_statics.pkl".format(self.cache_dir)
 
     def load_statics(self, loader):
         return self.run_loader(self.statics(), None, loader)
+
+    def remove(self):
+        for fn in [self.statics()]:
+            if os.path.exists(fn):
+                os.remove(fn)

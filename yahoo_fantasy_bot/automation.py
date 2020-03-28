@@ -11,9 +11,10 @@ class Driver(object):
     :param dry_run: True if no writes to the Yahoo APIs
     :param full: True if we are to optimize using the free agents.  False means
         we just optimize for our bench.
+    :param reset_cache: True if the cache files should be removed before running
     """
-    def __init__(self, cfg, dry_run, full, prompt):
-        self.bot = bot.ManagerBot(cfg)
+    def __init__(self, cfg, dry_run, full, prompt, reset_cache):
+        self.bot = bot.ManagerBot(cfg, reset_cache)
         self.dry_run = dry_run
         self.full = full
         self.prompt = prompt

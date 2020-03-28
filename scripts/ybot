@@ -3,7 +3,7 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot [-idfp] [-g x] <cfg_file>
+  ybot [-idfpr] [-g x] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
@@ -21,6 +21,9 @@ Options:
   -g, --generations=x Number of generations to do during lineup optimization.
                       The more generations, the more combinations of lineups we
                       will evaluate.
+  -r, --resetcache    Remove any cache files before starting program.  This is
+                      necessary if you changed the source of prediction stats in
+                      the config file.
 
 """
 from docopt import docopt
@@ -61,5 +64,5 @@ if __name__ == '__main__':
         intr.run()
     else:
         auto = automation.Driver(cfg, args['--dry-run'], args['--full'],
-                                 args['--prompt'])
+                                 args['--prompt'], args['--resetcache'])
         auto.run()

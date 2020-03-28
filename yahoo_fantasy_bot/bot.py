@@ -98,8 +98,11 @@ class ScoreComparer:
 
 class ManagerBot:
     """A class that encapsulates an automated Yahoo! fantasy manager.
+
+    :param cfg: Config file
+    :param reset_cache: Set to True, if the cache files need to be removed first
     """
-    def __init__(self, cfg):
+    def __init__(self, cfg, reset_cache):
         self.logger = logging.getLogger()
         self.cfg = cfg
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
@@ -107,6 +110,9 @@ class ManagerBot:
         self.tm = self.lg.to_team(self.lg.team_key())
         self.tm_cache = utils.TeamCache(self.cfg, self.lg.team_key())
         self.lg_cache = utils.LeagueCache(self.cfg)
+        if reset_cache:
+            self.tm_cache.remove()
+            self.lg_cache.remove()
         self.load_league_statics()
         self.pred_bldr = None
         self.my_team_bldr = self._construct_roster_builder()
@@ -296,7 +302,7 @@ class ManagerBot:
 
         expiry = datetime.timedelta(
             minutes=int(self.cfg['Cache']['freeAgentExpiry']))
-        return self.lg_cache.load_free_agents(expiry, loader)
+        return self.tm_cache.load_free_agents(expiry, loader)
 
     def fetch_league_lineups(self):
         def loader():
@@ -313,8 +319,8 @@ class ManagerBot:
                                                 loader)
 
     def invalidate_free_agents(self, plyrs):
-        if os.path.exists(self.lg_cache.free_agents_cache_file()):
-            with open(self.lg_cache.free_agents_cache_file(), "rb") as f:
+        if os.path.exists(self.tm_cache.free_agents_cache_file()):
+            with open(self.tm_cache.free_agents_cache_file(), "rb") as f:
                 free_agents = pickle.load(f)
 
             plyr_ids = [e["player_id"] for e in plyrs]
@@ -323,7 +329,7 @@ class ManagerBot:
             new_players = [e for e in free_agents["payload"]
                            if e['player_id'] not in plyr_ids]
             free_agents['payload'] = new_players
-            with open(self.lg_cache.free_agents_cache_file(), "wb") as f:
+            with open(self.tm_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
     def sum_opponent(self, opp_team_key):
