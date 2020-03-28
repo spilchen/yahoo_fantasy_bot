@@ -3,7 +3,7 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot [-idfp] <cfg_file>
+  ybot [-idfp] [-g x] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
@@ -18,6 +18,9 @@ Options:
                       alternative is to just consider optimizing the open slots
                       in the lineup and the bench.
   -p, --prompt        Prompt before applying roster moves.
+  -g, --generations=x Number of generations to do during lineup optimization.
+                      The more generations, the more combinations of lineups we
+                      will evaluate.
 
 """
 from docopt import docopt
@@ -40,6 +43,8 @@ if __name__ == '__main__':
     if not os.path.exists(args['<cfg_file>']):
         raise RuntimeError("Config file does not exist: " + args['<cfg_file>'])
     cfg.read(args['<cfg_file>'])
+    if args['--generations'] is not None:
+        cfg['LineupOptimizer']['generations'] = args['--generations']
 
     oauth2_logger.cleanup()
 

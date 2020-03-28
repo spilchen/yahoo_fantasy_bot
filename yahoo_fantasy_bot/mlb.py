@@ -560,6 +560,8 @@ class Scorer(Categories):
                 return plyr[stat] / plyr['G'] * plyr['WK_GS']
             elif plyr['SEASON_G'] > 0:
                 return plyr[stat] / plyr['SEASON_G'] * plyr['WK_G']
+            else:
+                return 0
         else:
             return plyr[stat]
 
