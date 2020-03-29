@@ -49,6 +49,10 @@ if __name__ == '__main__':
     if args['--generations'] is not None:
         cfg['LineupOptimizer']['generations'] = args['--generations']
 
+    log_dir = os.path.dirname(cfg['Logger']['file'])
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     oauth2_logger.cleanup()
 
     logging.basicConfig(

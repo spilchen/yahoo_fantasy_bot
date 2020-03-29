@@ -572,7 +572,7 @@ class Scorer(Categories):
         return val
 
     def _sum_hit_prediction(self, df):
-        hit_df = df[df['roster_type'] == 'B']
+        hit_df = df[df['position_type'] == 'B']
 
         sum = pd.Series()
         for stat in self.hit_count_cats:
@@ -592,7 +592,7 @@ class Scorer(Categories):
         return sum
 
     def _sum_pit_prediction(self, df):
-        pit_df = df[df['roster_type'] == 'P']
+        pit_df = df[df['position_type'] == 'P']
 
         sum = pd.Series()
         for stat in self.pit_count_cats:

@@ -7,7 +7,7 @@ def readme():
 
 
 setup(name='yahoo_fantasy_bot',
-      version='0.0.1',
+      version='0.0.6',
       description='A bot that can act as a manager in a Yahoo! fantasy league',
       long_description=readme(),
       url='http://github.com/spilchen/yahoo_fantasy_bot',
@@ -27,5 +27,6 @@ setup(name='yahoo_fantasy_bot',
                         'docopt', 'yahoo_oauth', 'nhl_scraper>=0.0.3',
                         'baseball_id>=0.0.6', 'progressbar', 'jinja2'],
       python_requires='>=3',
+      include_package_data=True,
       zip_safe=True,
       scripts=['scripts/ybot', 'scripts/ybot_setup'])

@@ -91,8 +91,10 @@ class ScoreComparer:
                 df = pd.DataFrame(data=lineup, columns=lineup.columns)
             else:
                 df = pd.DataFrame(data=lineup, columns=lineup[0].index)
-            score_sum = self.scorer.summarize(df)
-            scores = scores.append(score_sum, ignore_index=True)
+            # Lineup could be empty if all players were moved to the bench
+            if len(df.index) > 0:
+                score_sum = self.scorer.summarize(df)
+                scores = scores.append(score_sum, ignore_index=True)
         return scores.agg([agg])
 
 
