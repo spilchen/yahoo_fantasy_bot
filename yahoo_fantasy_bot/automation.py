@@ -20,7 +20,6 @@ class Driver(object):
         self.prompt = prompt
 
     def run(self):
-        self.bot.sync_lineup()
         print("Evaluating trades")
         self.bot.evaluate_trades(dry_run=self.dry_run, verbose=True,
                                  prompt=self.prompt)
