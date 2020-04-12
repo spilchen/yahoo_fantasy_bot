@@ -9,7 +9,6 @@ Usage:
               the format.
 
 Options:
-  -i, --interactive   Run the program in interactive mode.
   -d, --dry-run       Does a dry run of the roster change.  No roster change
                       will actually occur.
   -f, --full          Does a full analysis of the entire lineup meaning all
@@ -27,7 +26,7 @@ Options:
 
 """
 from docopt import docopt
-from yahoo_fantasy_bot import interactive, automation, oauth2_logger
+from yahoo_fantasy_bot import automation, oauth2_logger
 import logging
 import os
 import pandas as pd
@@ -63,10 +62,6 @@ if __name__ == '__main__':
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    if args['--interactive']:
-        intr = interactive.Driver(cfg)
-        intr.run()
-    else:
-        auto = automation.Driver(cfg, args['--dry-run'], args['--full'],
-                                 args['--prompt'], args['--resetcache'])
-        auto.run()
+    auto = automation.Driver(cfg, args['--dry-run'], args['--full'],
+                             args['--prompt'], args['--resetcache'])
+    auto.run()

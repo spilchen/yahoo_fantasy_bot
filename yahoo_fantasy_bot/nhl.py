@@ -180,41 +180,6 @@ class PlayerPrinter:
             print(plyr['name'])
         print("")
 
-    def printListPlayerHeading(self, pos):
-        if pos in ['G']:
-            self._print_list_plyr_heading(pos, self.goalie_cats)
-        else:
-            self._print_list_plyr_heading(pos, self.skater_cats)
-
-    def _print_list_plyr_heading(self, pos, cats):
-        header = "{:20}   {} ".format('name', 'WK_G')
-        for i, s in enumerate(cats):
-            if i != 0:
-                header += "/"
-            header += "{}".format(s)
-        print(header)
-
-    def printPlayer(self, pos, plyr):
-        if pos in ['G']:
-            self._print_player(pos, plyr, self.goalie_cats)
-        else:
-            self._print_player(pos, plyr, self.skater_cats)
-
-    def _print_player(self, pos, plyr, cats):
-        if self._does_player_have_valid_stats(plyr, cats):
-            ln = "{:20}   {} ".format(plyr[1]['name'], plyr[1]['WK_G'])
-            for i, s in enumerate(cats):
-                if i != 0:
-                    ln += "/"
-                ln += "{:.3f}".format(plyr[1][s])
-            print(ln)
-
-    def _does_player_have_valid_stats(self, plyr, stats):
-        for stat in stats:
-            if np.isnan(plyr[1][stat]):
-                return False
-        return True
-
     @staticmethod
     def _get_stat_category(stat):
         '''Helper to determine if a given stat is for a skater or goalie

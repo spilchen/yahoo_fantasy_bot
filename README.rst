@@ -59,9 +59,7 @@ Once installed and the config file created, you can run the program via this com
 
   ybot <cfg_file>
 
-The default is to run in automated mode.  This will optimize the lineup for the next scoring period.  You can do this in a dry-run meaning no changes are made with Yahoo by specifying the --dry-run option.  There is also an interactive mode where you get a menu system and you can run the various lineup optimization commands with the --interactive option.
-
-To get a full help text use the `--help` option.
+The script will choose a lineup based on available spots in the lineup.  You can have it do a dry run with the --dry-run option so that it doesn't make any roster moves with Yahoo.  These is also a prompt option that will confirm with you each time it is about to make a roster move with Yahoo.  To get a full help text use the `--help` option.
 
 Example
 -------

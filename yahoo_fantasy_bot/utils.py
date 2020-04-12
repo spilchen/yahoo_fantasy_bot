@@ -57,15 +57,6 @@ class CacheBase(object):
 
         return cached_data["payload"]
 
-    def refresh_cache_file(self, fn, refresh_payload):
-        assert(os.path.exists(fn))
-        with open(fn, "rb") as f:
-            cached_data = pickle.load(f)
-        assert("payload" in cached_data)
-        cached_data['payload'] = refresh_payload
-        with open(fn, "wb") as f:
-            pickle.dump(cached_data, f)
-
 
 class TeamCache(CacheBase):
     def __init__(self, cfg, team_key):
@@ -73,17 +64,11 @@ class TeamCache(CacheBase):
             cfg, "{}/{}/{}".format(cfg['Cache']['dir'], cfg['League']['id'],
                                    team_key))
 
-    def blacklist_cache_file(self):
-        return "{}/blacklist.pkl".format(self.cache_dir)
-
     def prediction_builder_file(self):
         return "{}/pred_builder.pkl".format(self.cache_dir)
 
     def load_prediction_builder(self, expiry, loader):
         return self.run_loader(self.prediction_builder_file(), expiry, loader)
-
-    def refresh_prediction_builder(self, pred_bldr):
-        self.refresh_cache_file(self.prediction_builder_file(), pred_bldr)
 
     def league_lineup_file(self):
         return "{}/lg_lineups.pkl".format(self.cache_dir)
@@ -98,7 +83,7 @@ class TeamCache(CacheBase):
         return self.run_loader(self.free_agents_cache_file(), expiry, loader)
 
     def remove(self):
-        for fn in [self.blacklist_cache_file(), self.prediction_builder_file(),
+        for fn in [self.prediction_builder_file(),
                    self.league_lineup_file(), self.free_agents_cache_file()]:
             if os.path.exists(fn):
                 os.remove(fn)

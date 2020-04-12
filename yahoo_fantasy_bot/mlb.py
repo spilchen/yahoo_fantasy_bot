@@ -491,46 +491,6 @@ class PlayerPrinter(Categories):
             print(plyr['name'])
         print("")
 
-    def printListPlayerHeading(self, pos):
-        s = "{:20}   ".format('name')
-        if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:
-            if len(self.hit_count_cats) > 0:
-                s += "/".join(["{}" for _ in self.hit_count_cats]).format(
-                    *self.hit_count_cats)
-            s += " "
-            if len(self.hit_ratio_cats) > 0:
-                s += "/".join(["{}" for _ in self.hit_ratio_cats]).format(
-                    *self.hit_ratio_cats)
-        else:
-            if len(self.hit_count_cats) > 0:
-                s += "/".join(["{}" for _ in self.pit_count_cats]).format(
-                    *self.pit_count_cats)
-            s += " "
-            if len(self.pit_ratio_cats) > 0:
-                s += "/".join(["{}" for _ in self.pit_ratio_cats]).format(
-                    *self.pit_ratio_cats)
-        print(s)
-
-    def printPlayer(self, pos, plyr):
-        s = "{:20}   ".format(plyr[1]['name'])
-        if pos in ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'Util']:
-            if len(self.hit_count_cats) > 0:
-                s += "/".join(["{:.1f}" for _ in self.hit_count_cats]).format(
-                    *[plyr[1][t] for t in self.hit_count_cats])
-            s += " "
-            if len(self.hit_ratio_cats) > 0:
-                s += "/".join(["{:.3f}" for _ in self.hit_ratio_cats]).format(
-                    *[plyr[1][t] for t in self.hit_ratio_cats])
-        else:
-            if len(self.pit_count_cats) > 0:
-                s += "/".join(["{:.1f}" for _ in self.pit_count_cats]).format(
-                    *[plyr[1][t] for t in self.pit_count_cats])
-            s += " "
-            if len(self.hit_ratio_cats) > 0:
-                s += "/".join(["{:.3f}" for _ in self.pit_ratio_cats]).format(
-                    *[plyr[1][t] for t in self.pit_ratio_cats])
-        print(s)
-
 
 class Scorer(Categories):
     """Class that scores rosters that it is given"""

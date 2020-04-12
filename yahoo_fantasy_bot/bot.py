@@ -71,12 +71,6 @@ class ScoreComparer:
             stddev_score += v
         return stddev_score
 
-    def print_stdev(self):
-        print("Standard deviations for each category:")
-        for cat, val in self.stdevs.iteritems():
-            print("{} - {:.3f}".format(cat, val.iloc(0)[0]))
-        print("")
-
     def _compute_agg(self, lineups, agg):
         """
         Compute an aggregation of each of the categories
@@ -123,7 +117,6 @@ class ManagerBot:
         self.scorer = Scorer(self.cfg)
         Display = self._get_display_class()
         self.display = Display(self.cfg)
-        self.blacklist = self._load_blacklist()
         self.lineup = None
         self.bench = []
         self.injury_reserve = []
@@ -136,16 +129,7 @@ class ManagerBot:
         self.fetch_player_pool()
         self.sync_lineup()
         self.pick_injury_reserve()
-        self.auto_pick_opponent()
-
-    def _load_blacklist(self):
-        fn = self.tm_cache.blacklist_cache_file()
-        if os.path.exists(fn):
-            with open(fn, "rb") as f:
-                blacklist = pickle.load(f)
-        else:
-            blacklist = []
-        return blacklist
+        self._auto_pick_opponent()
 
     def pick_bench(self):
         """Pick the bench spots based on the current roster."""
@@ -212,26 +196,6 @@ class ManagerBot:
                         del self.lineup[idx]
                         break
 
-    def _save_blacklist(self):
-        fn = self.tm_cache.blacklist_cache_file()
-        with open(fn, "wb") as f:
-            pickle.dump(self.blacklist, f)
-
-    def add_to_blacklist(self, plyr_name):
-        self.blacklist.append(plyr_name)
-        self._save_blacklist()
-
-    def remove_from_blacklist(self, plyr_name):
-        if plyr_name not in self.blacklist:
-            return False
-        else:
-            self.blacklist.remove(plyr_name)
-            self._save_blacklist()
-            return True
-
-    def get_blacklist(self):
-        return self.blacklist
-
     def load_league_statics(self):
         """Load static settings for the league.
 
@@ -270,9 +234,6 @@ class ManagerBot:
         expiry = datetime.timedelta(
             minutes=int(self.cfg['Cache']['predictionBuilderExpiry']))
         self.pred_bldr = self.tm_cache.load_prediction_builder(expiry, loader)
-
-    def save(self):
-        self.tm_cache.refresh_prediction_builder(self.pred_bldr)
 
     def fetch_cur_lineup(self):
         """Fetch the current lineup as set in Yahoo!"""
@@ -334,7 +295,7 @@ class ManagerBot:
             with open(self.tm_cache.free_agents_cache_file(), "wb") as f:
                 pickle.dump(free_agents, f)
 
-    def sum_opponent(self, opp_team_key):
+    def _sum_opponent(self, opp_team_key):
         # Build up the predicted score of the opponent
         try:
             team_name = self._get_team_name(self.lg, opp_team_key)
@@ -447,8 +408,7 @@ class ManagerBot:
         :return: Player pool
         :rtype: DataFrame
         """
-        avail_plyrs = self.ppool[~self.ppool['name'].isin(self.blacklist)]
-        avail_plyrs = avail_plyrs[avail_plyrs['percent_owned'] > 10]
+        avail_plyrs = self.ppool[self.ppool['percent_owned'] > 10]
         return avail_plyrs[avail_plyrs['status'] == '']
 
     def optimize_lineup_from_free_agents(self):
@@ -474,87 +434,6 @@ class ManagerBot:
             self.lineup = copy.deepcopy(best_lineup.get_roster())
         return best_lineup is not None
 
-    def show_score(self):
-        if self.opp_sum is None:
-            raise RuntimeError("No opponent selected")
-
-        self.score_comparer.print_stdev()
-
-        df = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
-        my_sum = self.scorer.summarize(df)
-        score = self.score_comparer.compute_score(my_sum)
-        print("Against '{}' your roster has a score of: {}".
-              format(self.opp_team_name, score))
-        print("")
-        for stat in my_sum.keys():
-            if stat in ["ERA", "WHIP"]:
-                if math.isclose(my_sum[stat], self.opp_sum[stat]):
-                    my_win = "="
-                    opp_win = "="
-                elif my_sum[stat] < self.opp_sum[stat]:
-                    my_win = "*"
-                    opp_win = ""
-                else:
-                    my_win = ""
-                    opp_win = "*"
-            else:
-                if math.isclose(my_sum[stat], self.opp_sum[stat]):
-                    my_win = "="
-                    opp_win = "="
-                elif my_sum[stat] > self.opp_sum[stat]:
-                    my_win = "*"
-                    opp_win = ""
-                else:
-                    my_win = ""
-                    opp_win = "*"
-            print("{:5} {:2.3f} {:1} v.s. {:2.3f} {:2}".format(
-                stat, my_sum[stat], my_win, self.opp_sum[stat], opp_win))
-
-    def list_players(self, pos):
-        self.display.printListPlayerHeading(pos)
-
-        for plyr in self.ppool.iterrows():
-            if pos in plyr[1]['eligible_positions']:
-                self.display.printPlayer(pos, plyr)
-
-    def find_in_lineup(self, name):
-        for idx, p in enumerate(self.lineup):
-            if p['name'] == name:
-                return idx
-        raise LookupError("Could not find player: " + name)
-
-    def swap_player(self, plyr_name_del, plyr_name_add):
-        if plyr_name_add:
-            plyr_add_df = self.ppool[self.ppool['name'] == plyr_name_add]
-            if(len(plyr_add_df.index) == 0):
-                raise LookupError("Could not find player in pool: {}".format(
-                    plyr_name_add))
-            if(len(plyr_add_df.index) > 1):
-                raise LookupError("Found more than one player!: {}".format(
-                    plyr_name_add))
-            plyr_add = plyr_add_df.iloc(0)[0]
-        else:
-            plyr_add = None
-
-        idx = self.find_in_lineup(plyr_name_del)
-        plyr_del = self.lineup[idx]
-        assert(type(plyr_del.selected_position) == str)
-        if plyr_add and plyr_del.selected_position not in \
-                plyr_add['eligible_positions']:
-            raise ValueError("Position {} is not a valid position for {}: {}".
-                             format(plyr_del.selected_position,
-                                    plyr_add['name'],
-                                    plyr_add['eligible_positions']))
-
-        if plyr_add:
-            plyr_add['selected_position'] = plyr_del['selected_position']
-        plyr_del['selected_position'] = np.nan
-        if plyr_add:
-            self.lineup[idx] = plyr_add
-        else:
-            del(self.lineup[idx])
-        self.pick_bench()
-
     def apply_roster_moves(self, dry_run, prompt):
         """Make roster changes with Yahoo!
 
@@ -572,11 +451,11 @@ class ManagerBot:
             adds = roster_chg.get_adds_completed()
             self.invalidate_free_agents(adds)
 
-    def pick_opponent(self, opp_team_key):
-        (self.opp_team_name, self.opp_sum) = self.sum_opponent(opp_team_key)
+    def _pick_opponent(self, opp_team_key):
+        (self.opp_team_name, self.opp_sum) = self._sum_opponent(opp_team_key)
         self.score_comparer.set_opponent(self.opp_sum)
 
-    def auto_pick_opponent(self):
+    def _auto_pick_opponent(self):
         edit_wk = self.lg.current_week()
         (wk_start, wk_end) = self.lg.week_date_range(edit_wk)
         edit_date = self.lg.edit_date()
@@ -589,7 +468,7 @@ class ManagerBot:
             self.logger.info("Could not find opponent.  Picking ourselves...")
             opp_team_key = self.lg.team_key()
 
-        self.pick_opponent(opp_team_key)
+        self._pick_opponent(opp_team_key)
 
     def evaluate_trades(self, dry_run, verbose, prompt=False):
         """
@@ -692,14 +571,6 @@ class ManagerBot:
             for _ in range(int(pos_detail['count'])):
                 pos_list.append(pos_name)
         return roster.Builder(pos_list)
-
-    def _get_position_types(self):
-        settings = self.lg.settings()
-        position_types = {'mlb': ['B', 'P'], 'nhl': ['G', 'P']}
-        return position_types[settings['game_code']]
-
-    def _is_predicted_stat(self, stat):
-        return stat in self.cfg['League']['predictedStatCategories'].split(',')
 
     def _get_orig_roster(self):
         return self.lg.to_team(self.lg.team_key()).roster(
