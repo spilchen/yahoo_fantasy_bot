@@ -80,6 +80,7 @@ class Container:
             return
 
         old_pos = plyr['selected_position']
+        assert(old_pos in self.pos_count)
         self.pos_count[old_pos] -= 1
         self._del_from_plyr_by_pos(plyr)
         plyr['selected_position'] = pos

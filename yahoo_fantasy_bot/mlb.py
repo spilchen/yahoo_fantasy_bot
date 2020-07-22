@@ -133,12 +133,12 @@ class Builder:
                 df = pd.merge(lk, self.ppool, how='inner', left_on=['fg_id'],
                               right_on=[scrape_id_system])
 
-            espn_ids = df.espn_id.to_list()
-            num_GS = self._num_gs(espn_ids)
-            df = df.assign(WK_GS=pd.Series(num_GS, index=df.index))
             team_abbrevs = self._lookup_teams(df.mlb_team.to_list(), team_has)
             df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
             if self.use_weekly_schedule:
+                espn_ids = df.espn_id.to_list()
+                num_GS = self._num_gs(espn_ids)
+                df = df.assign(WK_GS=pd.Series(num_GS, index=df.index))
                 wk_g = self._num_games_for_teams(team_abbrevs, True)
                 df = df.assign(WK_G=pd.Series(wk_g, index=df.index))
                 sea_g = self._num_games_for_teams(team_abbrevs, False)
@@ -227,7 +227,7 @@ class Builder:
         for plyr in roster:
             if plyr['position_type'] != position_type or \
                     ('selected_position' in plyr and
-                     plyr['selected_position'] in ['BN', 'DL']):
+                     plyr['selected_position'] in ['BN', 'IL', 'DL']):
                 continue
 
             one_lk = self._lookup_plyr(plyr, fail_on_missing)

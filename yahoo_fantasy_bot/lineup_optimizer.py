@@ -176,6 +176,7 @@ class GeneticAlgorithm:
         lineup = roster.Container(self.cfg)
         for plyr in locked_plyrs:
             try:
+                plyr['selected_position'] = np.nan
                 lineup = self.roster_bldr.fit_if_space(lineup, plyr)
             except LookupError:
                 self.logger.info(
