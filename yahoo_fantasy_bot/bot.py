@@ -196,6 +196,28 @@ class ManagerBot:
                         del self.lineup[idx]
                         break
 
+    def move_recovered_il_to_bench(self):
+        """Move any player that is currently on the IL but no longer eligible
+
+        Any player is moved to the bench.  This is temporary and may cause the size of the bench to increase the max.
+        We keep them at the bench so they can be used in the lineup (if needed).  The bench is fixed up when
+        pick_bench() is called.
+        """
+        roster = self._get_orig_roster()
+        for plyr in roster:
+            assert(plyr['selected_position'] != 'IR')  # Need to account for IR
+            if plyr['selected_position'] == 'IL' and 'IL' not in plyr['eligible_positions']:
+                plyr_from_pool = self.ppool[self.ppool['player_id'] == plyr['player_id']]
+                self.bench.append(plyr_from_pool.iloc(0)[0])
+                for idx, lp in enumerate(self.lineup):
+                    if lp['player_id'] == plyr['player_id']:
+                        self.logger.info(
+                            "Moving {} out of the IL slot because "
+                            "they are no longer eligible ({})".format(
+                                plyr['name'], plyr['eligible_positions']))
+                        del self.lineup[idx]
+                        break
+
     def load_league_statics(self):
         """Load static settings for the league.
 
@@ -240,8 +262,7 @@ class ManagerBot:
         all_mine = self._get_orig_roster()
         pct_owned = self.lg.percent_owned([e['player_id'] for e in all_mine])
         for p, pct_own in zip(all_mine, pct_owned):
-            if p['selected_position'] == 'BN' or \
-                    p['selected_position'] == 'IR':
+            if p['selected_position'] in ['BN', 'IR', 'IL']:
                 p['selected_position'] = np.nan
             assert(pct_own['player_id'] == p['player_id'])
             p['percent_owned'] = pct_own['percent_owned']
