@@ -15,7 +15,7 @@ import copy
 import collections
 
 LeagueStatics = collections.namedtuple("LeagueStatics",
-                                       "pos ir_spots bn_spots settings cats")
+                                       "pos ir_spots bn_spots settings cats ir_name")
 
 
 class ScoreComparer:
@@ -162,7 +162,7 @@ class ManagerBot:
         ir = []
         roster = self._get_orig_roster()
         for plyr in roster:
-            if plyr['status'] == 'IR':
+            if plyr['status'].startswith(self.lg_statics.ir_name):
                 ir.append(plyr)
                 for idx, lp in enumerate(self.lineup):
                     if lp['player_id'] == plyr['player_id']:
@@ -230,10 +230,13 @@ class ManagerBot:
             pos = self.lg.positions()
             if "IR" in pos:
                 ir_spots = pos['IR']['count']
+                ir_name = 'IR'
             elif "IL" in pos:
                 ir_spots = pos['IL']['count']
+                ir_name = 'IL'
             else:
                 ir_spots = 0
+                ir_name = None
             bn_spots = pos['BN']['count'] if "BN" in pos else 0
             for del_pos in ['IR', 'IL', 'BN']:
                 if del_pos in pos:
@@ -242,7 +245,8 @@ class ManagerBot:
                                  ir_spots=ir_spots,
                                  bn_spots=bn_spots,
                                  settings=self.lg.settings(),
-                                 cats=self.lg.stat_categories())
+                                 cats=self.lg.stat_categories(),
+                                 ir_name=ir_name)
         self.lg_statics = self.lg_cache.load_statics(loader)
 
     def init_prediction_builder(self):
@@ -262,7 +266,7 @@ class ManagerBot:
         all_mine = self._get_orig_roster()
         pct_owned = self.lg.percent_owned([e['player_id'] for e in all_mine])
         for p, pct_own in zip(all_mine, pct_owned):
-            if p['selected_position'] in ['BN', 'IR', 'IL']:
+            if p['selected_position'] in ['BN', self.lg_statics.ir_name]:
                 p['selected_position'] = np.nan
             assert(pct_own['player_id'] == p['player_id'])
             p['percent_owned'] = pct_own['percent_owned']
@@ -338,7 +342,8 @@ class ManagerBot:
         for plyr in self.bench:
             if plyr["player_id"] not in new_plyr_ids:
                 new_bench.append(plyr)
-        assert(len(new_bench) <= self.lg_statics.bn_spots)
+        # Note, it is possible for new_bench to be greater than the allowed.  We allow this
+        # temporarily as the bench will be trimmed later.
         self.lineup = new_lineup
         self.bench = new_bench
 
@@ -406,8 +411,7 @@ class ManagerBot:
         bench_ids = [e['player_id'] for e in yahoo_roster
                      if e['selected_position'] == 'BN']
         ir_ids = [e['player_id'] for e in yahoo_roster
-                  if (e['selected_position'] == 'DL' or
-                      e['selected_position'] == 'IR')]
+                  if (e['selected_position'] == self.lg_statics.ir_name)]
         lineup = []
         bench = []
         ir = []
@@ -464,7 +468,7 @@ class ManagerBot:
         """
         roster_chg = RosterChanger(self.lg, dry_run, self._get_orig_roster(),
                                    self.lineup, self.bench,
-                                   self.injury_reserve, prompt)
+                                   self.injury_reserve, self.lg_statics.ir_name, prompt)
         roster_chg.apply()
 
         # Change the free agent cache to remove the players we added
@@ -623,7 +627,7 @@ class ManagerBot:
 
 class RosterChanger:
     def __init__(self, lg, dry_run, orig_roster, lineup, bench,
-                 injury_reserve, prompt):
+                 injury_reserve, ir_name, prompt):
         self.lg = lg
         self.tm = lg.to_team(lg.team_key())
         self.dry_run = dry_run
@@ -632,6 +636,7 @@ class RosterChanger:
         self.lineup = lineup
         self.bench = bench
         self.injury_reserve = injury_reserve
+        self.ir_name = ir_name
         self.orig_roster_ids = [e['player_id'] for e in orig_roster]
         self.new_roster_ids = [e['player_id'] for e in lineup] + \
             [e['player_id'] for e in bench] + \
@@ -718,7 +723,7 @@ class RosterChanger:
 
     def _apply_ir_moves(self):
         orig_ir = [e for e in self.orig_roster
-                   if e['selected_position'] == 'IR']
+                   if e['selected_position'] == self.ir_name]
         new_ir_ids = [e['player_id'] for e in self.injury_reserve]
         pos_change = []
         num_drops = 0
@@ -732,6 +737,7 @@ class RosterChanger:
 
         for plyr in self.injury_reserve:
             assert(plyr['player_id'] in self.orig_roster_ids)
+            # SPILLY - we need to know if the league uses IR or IL slots
             pos_change.append({'player_id': plyr['player_id'],
                                'selected_position': 'IR',
                                'name': plyr['name']})
