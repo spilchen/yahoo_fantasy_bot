@@ -173,7 +173,7 @@ class ManagerBot:
                         del self.bench[idx]
                         break
 
-        if len(ir) < self.lg_statics.ir_spots:
+        if len(ir) <= self.lg_statics.ir_spots:
             self.injury_reserve = ir
         else:
             assert(False), "Need to implement pruning of IR"
@@ -737,9 +737,8 @@ class RosterChanger:
 
         for plyr in self.injury_reserve:
             assert(plyr['player_id'] in self.orig_roster_ids)
-            # SPILLY - we need to know if the league uses IR or IL slots
             pos_change.append({'player_id': plyr['player_id'],
-                               'selected_position': 'IR',
+                               'selected_position': self.ir_name,
                                'name': plyr['name']})
             num_drops -= 1
 
