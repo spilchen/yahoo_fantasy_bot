@@ -436,6 +436,16 @@ class ManagerBot:
         avail_plyrs = self.ppool[self.ppool['percent_owned'] > 10]
         return avail_plyrs[avail_plyrs['status'] == '']
 
+    def _get_locked_players_list(self):
+        locked_file = self.cfg['LineupOptimizer']['lockPlayerFile']
+        if locked_file != "":
+            if not os.path.isfile(locked_file):
+                raise RuntimeError("Could not open locked file: {}".format(locked_file))
+            with open(locked_file) as f:
+                return [p.strip() for p in f.readlines()]
+        else:
+            return []
+
     def optimize_lineup_from_free_agents(self):
         """
         Optimize your lineup using all of your players plus free agents
@@ -445,12 +455,14 @@ class ManagerBot:
         optimizer_func = self._get_lineup_optimizer_function()
 
         locked_plyrs = []
+        locked_from_file = self._get_locked_players_list()
         thres = int(self.cfg['LineupOptimizer']['lockPlayersAbovePctOwn'])
         for plyr in self.lineup:
-            if plyr['percent_owned'] >= thres:
+            if plyr['percent_owned'] >= thres or plyr['name'] in locked_from_file:
                 clone_plyr = copy.deepcopy(plyr)
                 clone_plyr['selected_position'] = np.nan
                 locked_plyrs.append(clone_plyr)
+                self.logger.info("{} is added to locked list ({}% owned)".format(plyr['name'], plyr['percent_owned']))
 
         best_lineup = optimizer_func(self.cfg, self.score_comparer,
                                      self.my_team_bldr,
