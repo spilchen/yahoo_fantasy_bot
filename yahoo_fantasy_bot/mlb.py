@@ -42,6 +42,8 @@ class Builder:
         self.ts = ts
         self.es = es
         self.tss = tss
+        self.join_col_csv = cfg['Prediction']['join_column_csv']
+        self.join_col_id_lookup = cfg['Prediction']['join_column_id_lookup']
         if lg.settings()['weekly_deadline'] != '1':
             raise RuntimeError("This bot only supports weekly lineups.")
         # In the preseason the edit date will be the next day.  Only once the
@@ -56,15 +58,16 @@ class Builder:
         self.season_end_date = datetime.date(self.wk_end_date.year, 12, 31)
 
     def __getstate__(self):
-        return (self.ppool, self.ts, self.es, self.tss, self.wk_start_date,
+        return (self.ppool, self.ts, self.es, self.tss, self.join_col_csv,
+                self.join_col_id_lookup, self.wk_start_date,
                 self.wk_end_date, self.season_end_date,
                 self.use_weekly_schedule, self.source)
 
     def __setstate__(self, state):
         self.id_lookup = Lookup
-        (self.ppool, self.ts, self.es, self.tss, self.wk_start_date,
-         self.wk_end_date, self.season_end_date, self.use_weekly_schedule,
-         self.source) = state
+        (self.ppool, self.ts, self.es, self.tss, self.join_col_csv,
+         self.join_col_id_lookup, self.wk_start_date, self.wk_end_date,
+         self.season_end_date, self.use_weekly_schedule, self.source) = state
 
     def set_id_lookup(self, lk):
         self.id_lookup = lk
@@ -85,12 +88,13 @@ class Builder:
             assert(self.source == 'csv')
             for plyr in plyrs:
                 meta = self._lookup_plyr(plyr, True).to_dict('record')[0]
-                stats = self.ppool[self.ppool['playerid'] == meta['fg_id']].to_dict('record')[0]
+                stats = self.ppool[
+                    self.ppool[self.join_col_csv] == meta[self.join_col_id_lookup]
+                ].to_dict('record')[0]
                 dict = {**meta, **stats, **plyr}
                 yield pd.Series(dict)
 
-    def predict(self, plyrs, fail_on_missing=True,
-                scrape_id_system='playerid', team_has='abbrev'):
+    def predict(self, plyrs, fail_on_missing=True, team_has='abbrev'):
         """Build a dataset of hitting and pitching predictions for the week
 
         The roster is inputed into this function.  It will scrape the
@@ -103,9 +107,6 @@ class Builder:
         :param fail_on_missing: True we are to fail if any player in
             roster_cont can't be found in the prediction data set.  Set this to
             false to simply filter those out.
-        :param scrape_id_system: Name of the ID column in the scraped data that
-            has the ID to match with Lookup
-        :type scrape_id_system: str
         :param team_has: Indicate the Team field in the scraped data frame.
             Does it have 'just_name' (e.g. Blue Jays, Reds, etc.) or 'abbrev'
             (e.g.  NYY, SEA, etc.)
@@ -126,12 +127,13 @@ class Builder:
             if self.source.startswith("yahoo"):
                 df = pd.merge(lk, self.ppool, how='inner',
                               left_on=['yahoo_id'],
-                              right_on=[scrape_id_system],
+                              right_on=['playerid'],
                               suffixes=('', '_dup'))
             else:
                 assert(self.source == 'csv')
-                df = pd.merge(lk, self.ppool, how='inner', left_on=['fg_id'],
-                              right_on=[scrape_id_system])
+                df = pd.merge(lk, self.ppool, how='inner',
+                              left_on=[self.join_col_id_lookup],
+                              right_on=[self.join_col_csv])
 
             team_abbrevs = self._lookup_teams(df.mlb_team.to_list(), team_has)
             df = df.assign(team=pd.Series(team_abbrevs, index=df.index))

@@ -614,12 +614,8 @@ class ManagerBot:
             day=self.lg.edit_date())
 
     def _call_predict(self, plyrs, fail_on_missing):
-            kwargs = {
-                k: v for k, v in self.cfg['PredictionNamedArguments'].items()
-            }
-            return self.pred_bldr.predict(
-                plyrs, fail_on_missing=fail_on_missing,
-                **kwargs)
+            return self.pred_bldr.predict(plyrs,
+                                          fail_on_missing=fail_on_missing)
 
     def _get_roster_for_team(self, team):
         """Get all the players that are active for a given team
