@@ -30,7 +30,6 @@ class Driver(object):
         if self.full:
             print("Optimizing full lineup using available free agents")
             self.bot.optimize_lineup_from_free_agents()
-            self.bot.pick_bench()
         else:
             print("Optimizing open lineup spots using available free agents")
             self.bot.fill_empty_spots_from_bench()
@@ -38,6 +37,7 @@ class Driver(object):
             print("Optimizing lineup using players available from bench")
             self.bot.pick_bench()
             self.bot.optimize_lineup_from_bench()
+        self.bot.pick_bench()
         print("Optimized lineup")
         self.bot.print_roster()
         print("Computing roster moves to apply")
