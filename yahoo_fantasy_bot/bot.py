@@ -138,9 +138,19 @@ class ManagerBot:
             return bench
 
         # We'll pick the bench spots by picking players not in your lineup or
-        # IR but have the highest ownership %.
+        # IR.  We first pick from locked players then pick the highest
+        # ownership %.
         lineup_names = [e['name'] for e in self.lineup] + \
             [e['name'] for e in self.injury_reserve]
+
+        for plyr_name in self._get_locked_players_list():
+            if plyr_name not in lineup_names:
+                plyr_from_pool = self.ppool[self.ppool['name'] == plyr_name]
+                bench.append(plyr_from_pool.iloc(0)[0])
+                if len(bench) == self.lg_statics.bn_spots:
+                    self.bench = bench
+                    return
+
         top_owners = self.ppool.sort_values(by=["percent_owned"],
                                             ascending=False)
         for plyr in top_owners.iterrows():
@@ -150,8 +160,8 @@ class ManagerBot:
                     p['name'], p['percent_owned']))
                 bench.append(p)
                 if len(bench) == self.lg_statics.bn_spots:
-                    break
-        self.bench = bench
+                    self.bench = bench
+                    return
 
     def pick_injury_reserve(self):
         """Pick the injury reserve slots"""
@@ -162,7 +172,8 @@ class ManagerBot:
         ir = []
         roster = self._get_orig_roster()
         for plyr in roster:
-            if plyr['status'].startswith(self.lg_statics.ir_name):
+            if plyr['status'].startswith(self.lg_statics.ir_name) or \
+                    plyr['status'] == 'COVID-19':
                 ir.append(plyr)
                 for idx, lp in enumerate(self.lineup):
                     if lp['player_id'] == plyr['player_id']:
