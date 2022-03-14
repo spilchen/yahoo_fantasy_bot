@@ -31,6 +31,7 @@ class Builder:
     :param tss: Scraper to use to pull team list data from baseball_reference
     :type tss: baseball_reference.TeamSummaryScraper
     """
+
     def __init__(self, lg, cfg, csv_details, ts, es, tss):
         hitters = source.read_csv(csv_details['hitters'])
         pitchers = source.read_csv(csv_details['pitchers'])
@@ -88,6 +89,8 @@ class Builder:
             assert(self.source == 'csv')
             for plyr in plyrs:
                 meta = self._lookup_plyr(plyr, True).to_dict('record')[0]
+                if meta[self.join_col_id_lookup] is np.nan:
+                    raise ValueError("{} does not have a value for {}".format(plyr['name'], self.join_col_id_lookup))
                 stats = self.ppool[
                     self.ppool[self.join_col_csv] == meta[self.join_col_id_lookup]
                 ].to_dict('record')[0]
@@ -496,6 +499,7 @@ class PlayerPrinter(Categories):
 
 class Scorer(Categories):
     """Class that scores rosters that it is given"""
+
     def __init__(self, cfg):
         super().__init__(cfg)
         self.use_weekly_schedule = \
@@ -582,6 +586,7 @@ class Scorer(Categories):
 
 class StatAccumulator(Categories):
     """Class that aggregates stats for a bunch of players"""
+
     def __init__(self, cfg):
         super().__init__(cfg)
         self.scorer = Scorer(cfg)
@@ -611,7 +616,7 @@ class StatAccumulator(Categories):
         """
         if 'WHIP' in self.pit_ratio_cats:
             self.sum['WHIP'] = (self.pit_temp_count_sum['BB'] + self.pit_temp_count_sum['H']) \
-                               / self.pit_temp_count_sum['IP'] \
+                / self.pit_temp_count_sum['IP'] \
                 if self.pit_temp_count_sum['IP'] > 0 else 0
         if 'ERA' in self.pit_ratio_cats:
             self.sum['ERA'] = self.pit_temp_count_sum['ER'] * 9 / self.pit_temp_count_sum['IP'] \

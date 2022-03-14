@@ -13,3 +13,5 @@ anaconda-project-local.yml
 *.csv
 *.cfg
 tags
+.vscode/
+locked_players.*
