@@ -11,6 +11,8 @@ class Driver(object):
     :param dry_run: True if no writes to the Yahoo APIs
     :param full: True if we are to optimize using the free agents.  False means
         we just optimize for our bench.
+    :param prompt: True if we are to prompt for each roster move.  False means
+        we answer yes for each prompt.
     :param reset_cache: True if the cache files should be removed before running
     """
     def __init__(self, cfg, dry_run, full, prompt, reset_cache):

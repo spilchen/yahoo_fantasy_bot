@@ -3,20 +3,20 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot [-idfpr] [-g x] <cfg_file>
+  ybot [-ayfr] [-g x] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
 
 Options:
-  -d, --dry-run       Does a dry run of the roster change.  No roster change
-                      will actually occur.
+  -a, --apply         Will apply the roster change in Yahoo.  Omitting this
+                      assumes a dry run of the roster change.
+  -y, --assumeyes     Answer yes for all of the roster moves.                    
   -f, --full          Does a full analysis of the entire lineup meaning all
                       players will be evaluated in an optimized lineup.  This
                       can potentially add a lot of churn to your lineup.  The
                       alternative is to just consider optimizing the open slots
                       in the lineup and the bench.
-  -p, --prompt        Prompt before applying roster moves.
   -g, --generations=x Number of generations to do during lineup optimization.
                       The more generations, the more combinations of lineups we
                       will evaluate.
@@ -62,6 +62,6 @@ if __name__ == '__main__':
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    auto = automation.Driver(cfg, args['--dry-run'], args['--full'],
-                             args['--prompt'], args['--resetcache'])
+    auto = automation.Driver(cfg, not args['--apply'], args['--full'],
+                             not args['--assumeyes'], args['--resetcache'])
     auto.run()
