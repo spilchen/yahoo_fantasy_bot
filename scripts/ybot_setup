@@ -227,6 +227,8 @@ if __name__ == '__main__':
         if wizard.has_stat("HLD") and fg_pred != 1:
             print("HLD not in prediction source, removing stat")
             wizard.remove_stat("HLD")
+        if wizard.has_stat("NSB"):
+            wizard.rename_stat("NSB", "SB")
 
         print("")
         print("Enter the path of the hitter CSV file that will be manually downloaded:")

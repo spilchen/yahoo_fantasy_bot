@@ -79,7 +79,7 @@ class ScoreComparer:
         :return: Aggregation compuation for each category
         :rtype: DataFrame
         """
-        scores = pd.DataFrame()
+        scores = []
         for lineup in lineups:
             if type(lineup) is pd.DataFrame:
                 df = pd.DataFrame(data=lineup, columns=lineup.columns)
@@ -88,8 +88,9 @@ class ScoreComparer:
             # Lineup could be empty if all players were moved to the bench
             if len(df.index) > 0:
                 score_sum = self.scorer.summarize(df)
-                scores = scores.append(score_sum, ignore_index=True)
-        return scores.agg([agg])
+                scores.append(score_sum)
+        df = pd.DataFrame(scores)
+        return df.agg([agg])
 
 
 class ManagerBot:
@@ -388,7 +389,7 @@ class ManagerBot:
         optimizer_func = self._get_lineup_optimizer_function()
         ppool = pd.DataFrame(data=self.bench, columns=self.bench[0].index)
         ldf = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
-        ppool = ppool.append(ldf, ignore_index=True, sort=False)
+        ppool = pd.concat([ppool, ldf], ignore_index=True, sort=False)
         ppool = ppool[ppool['status'] == '']
         new_lineup = optimizer_func(self.cfg, self.score_comparer,
                                     self.my_team_bldr, ppool, [])

@@ -82,18 +82,21 @@ class Builder:
         """
         if self.source.startswith("yahoo"):
             for plyr in plyrs:
-                stats = self.ppool[self.ppool['player_id'] == plyr['player_id']].to_dict('record')[0]
+                stats = self.ppool[self.ppool['player_id'] == plyr['player_id']].to_dict('records')[0]
                 dict = {**stats, **plyr}
                 yield pd.Series(dict)
         else:
             assert(self.source == 'csv')
             for plyr in plyrs:
-                meta = self._lookup_plyr(plyr, True).to_dict('record')[0]
+                meta = self._lookup_plyr(plyr, True).to_dict('records')[0]
                 if meta[self.join_col_id_lookup] is np.nan:
                     raise ValueError("{} does not have a value for {}".format(plyr['name'], self.join_col_id_lookup))
                 stats = self.ppool[
                     self.ppool[self.join_col_csv] == meta[self.join_col_id_lookup]
-                ].to_dict('record')[0]
+                ]
+                if len(stats) == 0:
+                    raise ValueError(f"Could not find any prediction for {plyr['name']} (id: {meta[self.join_col_id_lookup]})")
+                stats = stats.to_dict('records')[0]
                 dict = {**meta, **stats, **plyr}
                 yield pd.Series(dict)
 
@@ -138,9 +141,13 @@ class Builder:
                               left_on=[self.join_col_id_lookup],
                               right_on=[self.join_col_csv])
 
-            team_abbrevs = self._lookup_teams(df.mlb_team.to_list(), team_has)
-            df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
             if self.use_weekly_schedule:
+                # TODO: We use to get the team name from the lookup.
+                # However, that is no longer populated.  We will need
+                # to find a different source for the players current
+                # team.
+                team_abbrevs = self._lookup_teams(df.mlb_team.to_list(), team_has)
+                df = df.assign(team=pd.Series(team_abbrevs, index=df.index))
                 espn_ids = df.espn_id.to_list()
                 num_GS = self._num_gs(espn_ids)
                 df = df.assign(WK_GS=pd.Series(num_GS, index=df.index))
@@ -156,7 +163,7 @@ class Builder:
                 for hit_stat in ['HR', 'RBI', 'AVG', 'OBP', 'R', 'SB']:
                     df[hit_stat] = np.nan
 
-            res = res.append(df, sort=False)
+            res = pd.concat([res, df], sort=False)
 
         # Add a column that will track the selected position of each player.
         # It is currently set to NaN since other modules fill that in.
@@ -197,7 +204,7 @@ class Builder:
         return a
 
     def _lookup_plyr(self, plyr, fail_on_missing):
-        one_lk = self.id_lookup.from_yahoo_ids([plyr['player_id']])
+        one_lk = self.id_lookup.from_yahoo_ids([str(plyr['player_id'])])
         # Do a lookup of names if the ID lookup didn't work.  We do two of
         # them.  The first one is to filter on any name that has a missing
         # yahoo_id.  This is better then just a plain name lookup because
@@ -225,6 +232,9 @@ class Builder:
                 if fail_on_missing:
                     raise ValueError("Was not able to lookup player: {}".
                                      format(plyr))
+        if len(one_lk.index) > 0 and fail_on_missing and \
+            pd.isnull(one_lk.to_dict('records')[0]['yahoo_id']):
+            raise ValueError(f"The player {plyr['name']} was in the baseball_id db but didn't have a Yahoo ID")
         return one_lk
 
     def _find_roster(self, position_type, roster, fail_on_missing=True):
@@ -258,7 +268,7 @@ class Builder:
             if lk is None:
                 lk = one_lk
             else:
-                lk = lk.append(one_lk)
+                lk = pd.concat([lk, one_lk])
         return lk
 
     def _num_games_for_team(self, abrev, week):
@@ -514,7 +524,7 @@ class Scorer(Categories):
         :rtype: Series
         """
         res = self._sum_hit_prediction(df)
-        res = res.append(self._sum_pit_prediction(df))
+        res = pd.concat([res, self._sum_pit_prediction(df)])
         return res
 
     def sum_stat_for_player(self, plyr, stat):
@@ -528,6 +538,8 @@ class Scorer(Categories):
                 return plyr[stat] / plyr['SEASON_G'] * plyr['WK_G']
             else:
                 return 0
+        elif pd.isnull(plyr[stat]):
+            return 0
         else:
             return plyr[stat]
 
@@ -540,11 +552,11 @@ class Scorer(Categories):
     def _sum_hit_prediction(self, df):
         hit_df = df[df['position_type'] == 'B']
 
-        sum = pd.Series()
+        sum = pd.Series(dtype='float64')
         for stat in self.hit_count_cats:
             sum[stat] = self._sum_stat(hit_df, stat)
 
-        temp_sum = pd.Series()
+        temp_sum = pd.Series(dtype='float64')
         for stat in self.int_hit_cats:
             temp_sum[stat] = self._sum_stat(hit_df, stat)
 
@@ -560,11 +572,11 @@ class Scorer(Categories):
     def _sum_pit_prediction(self, df):
         pit_df = df[df['position_type'] == 'P']
 
-        sum = pd.Series()
+        sum = pd.Series(dtype='float64')
         for stat in self.pit_count_cats:
             sum[stat] = self._sum_stat(pit_df, stat)
 
-        temp_sum = pd.Series()
+        temp_sum = pd.Series(dtype='float64')
         for stat in self.int_pit_cats:
             temp_sum[stat] = self._sum_stat(pit_df, stat)
 
@@ -590,13 +602,13 @@ class StatAccumulator(Categories):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.scorer = Scorer(cfg)
-        self.sum = pd.Series()
+        self.sum = pd.Series(dtype='float64')
         for stat in self.hit_count_cats + self.hit_ratio_cats + self.pit_count_cats + self.pit_ratio_cats:
             self.sum[stat] = 0.0
-        self.hit_temp_count_sum = pd.Series()
+        self.hit_temp_count_sum = pd.Series(dtype='float64')
         for stat in self.int_hit_cats:
             self.hit_temp_count_sum[stat] = 0.0
-        self.pit_temp_count_sum = pd.Series()
+        self.pit_temp_count_sum = pd.Series(dtype='float64')
         for stat in self.int_pit_cats:
             self.pit_temp_count_sum[stat] = 0.0
 
