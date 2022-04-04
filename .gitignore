@@ -15,6 +15,7 @@ anaconda-project-local.yml
 tags
 .vscode/
 locked_players.*
+exclude_players.*
 
 # Environments
 .env

@@ -29,6 +29,7 @@ class ScoreComparer:
         compute a standard deviation of all of the stat categories.
     """
     def __init__(self, cfg, scorer, lg_lineups):
+        self.logger = logging.getLogger()
         self.cfg = cfg
         self.scorer = scorer
         self.opp_sum = None
@@ -88,6 +89,8 @@ class ScoreComparer:
             # Lineup could be empty if all players were moved to the bench
             if len(df.index) > 0:
                 score_sum = self.scorer.summarize(df)
+                self.logger.info(df.name.to_string())
+                self.logger.info(score_sum)
                 scores.append(score_sum)
         df = pd.DataFrame(scores)
         return df.agg([agg])
@@ -289,6 +292,7 @@ class ManagerBot:
         if self.ppool is None:
             plyr_pool = self.fetch_free_agents() + self.fetch_cur_lineup()
             self.ppool = self._call_predict(plyr_pool, fail_on_missing=False)
+            self._filter_excluded_players()
 
     def fetch_free_agents(self):
         def loader():
@@ -450,10 +454,24 @@ class ManagerBot:
 
     def _get_locked_players_list(self):
         locked_file = self.cfg['LineupOptimizer']['lockPlayerFile']
-        if locked_file != "":
-            if not os.path.isfile(locked_file):
-                raise RuntimeError("Could not open locked file: {}".format(locked_file))
-            with open(locked_file) as f:
+        return self._get_player_list(locked_file)
+
+    def _get_exclude_players_list(self):
+        exclude_file = self.cfg['LineupOptimizer']['excludePlayerFile']
+        return self._get_player_list(exclude_file)
+
+    def _filter_excluded_players(self):
+        for plyr_name in self._get_exclude_players_list():
+            self.logger.info(f"Removing {plyr_name} from player pool")
+            self.logger.info(f"Player pool size (before) = {len(self.ppool.index)}")
+            self.ppool = self.ppool[self.ppool['name'] != plyr_name]
+            self.logger.info(f"Player pool size (after) = {len(self.ppool.index)}")
+
+    def _get_player_list(self, file_name):
+        if file_name != "":
+            if not os.path.isfile(file_name):
+                raise RuntimeError("Could not open file: {}".format(file_name))
+            with open(file_name) as f:
                 return [p.strip() for p in f.readlines()]
         else:
             return []
