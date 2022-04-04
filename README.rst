@@ -4,7 +4,7 @@ Yahoo! Fantasy Bot
 
 A bot that can act as a manager in a Yahoo! fantasy league
 
-A$re you in a Yahoo! fantasy league with inactive managers?  Do you face teams that start players on the IR, and have been for weeks?  Or do you need a few more teams in your league?  This program helps eleviate that pain by intelligently managing a Yahoo! fantasy team.  It can optimize the lineup, taken into consideration available players in the free agent pool.  Adjust the IR and bench spots to account for star players that are a little banged up.  Approve or reject trades that are made to the team.  It does all of this by talking directly to Yahoo! without having to enter the transactions manually.  You just run the program whenever you need to set up the lineup, which takes only a few minutes to run.
+Are you in a Yahoo! fantasy league with inactive managers?  Do you face teams that start players on the IR, and have been for weeks?  Or do you need a few more teams in your league?  This program helps eleviate that pain by intelligently managing a Yahoo! fantasy team.  It can optimize the lineup, taken into consideration available players in the free agent pool.  Adjust the IR and bench spots to account for star players that are a little banged up.  Approve or reject trades that are made to the team.  It does all of this by talking directly to Yahoo! without having to enter the transactions manually.  You just run the program whenever you need to set up the lineup, which takes only a few minutes to run.
 
 Build status
 ------------
