@@ -28,6 +28,7 @@ You first neet to setup the environment by installing the app.  You can pull the
   virtualenv --python=python3.7 env
   source env/bin/activate
   pip install -r requirements.txt
+  pip install -e .
 
 Or you can simply install the package from pip.
 
