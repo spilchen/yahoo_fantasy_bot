@@ -174,7 +174,7 @@ class ManagerBot:
             return
 
         ir = []
-        roster = self._get_orig_roster()
+        roster = self.fetch_cur_lineup()
         for plyr in roster:
             if plyr['status'].startswith(self.lg_statics.ir_name) or \
                     plyr['status'] == 'COVID-19':
@@ -188,10 +188,17 @@ class ManagerBot:
                         del self.bench[idx]
                         break
 
-        if len(ir) <= self.lg_statics.ir_spots:
-            self.injury_reserve = ir
-        else:
-            assert(False), "Need to implement pruning of IR"
+        ir.sort(key=lambda p: p['percent_owned'], reverse=True)
+        while len(ir) > self.lg_statics.ir_spots:
+            # We have more IR players than IR spots.  We trim them by removing
+            # the ones that are the least owned.  We have already sorted the
+            # list, so we trim the last element.
+            rm_plyr = ir.pop()
+            # This could expand the bench past the number of allowed players.
+            # We will trim this down the correct number later.
+            plyr_from_pool = self.ppool[self.ppool['player_id'] == rm_plyr['player_id']]
+            self.bench.append(plyr_from_pool.iloc(0)[0])
+        self.injury_reserve = ir
 
     def move_non_available_players(self):
         """Remove any player that has a status (e.g. DTD, SUSP, etc.).
