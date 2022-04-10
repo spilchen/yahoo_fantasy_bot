@@ -3,7 +3,7 @@
 """A bot that acts as a manager for Yahoo! fantasy team
 
 Usage:
-  ybot [-ayfr] [-g x] <cfg_file>
+  ybot [-ayfri] [-g x] <cfg_file>
 
   <cfg_file>  The name of the configuration file.  See sample_config.ini for
               the format.
@@ -23,6 +23,9 @@ Options:
   -r, --resetcache    Remove any cache files before starting program.  This is
                       necessary if you changed the source of prediction stats in
                       the config file.
+  -i, --ignorestatus  When constructing the lineup, ignore status other than IL.
+                      This will allow the bot to pick players that are DTD/NA
+                      for the starting lineup.
 
 """
 from docopt import docopt
@@ -63,5 +66,6 @@ if __name__ == '__main__':
     )
 
     auto = automation.Driver(cfg, not args['--apply'], args['--full'],
-                             not args['--assumeyes'], args['--resetcache'])
+                             not args['--assumeyes'], args['--resetcache'],
+                             args['--ignorestatus'])
     auto.run()

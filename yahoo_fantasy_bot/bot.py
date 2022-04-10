@@ -200,7 +200,7 @@ class ManagerBot:
             self.bench.append(plyr_from_pool.iloc(0)[0])
         self.injury_reserve = ir
 
-    def move_non_available_players(self):
+    def move_non_available_players(self, ignore_status):
         """Remove any player that has a status (e.g. DTD, SUSP, etc.).
 
         If the player is important enough, they will be added back to the bench
@@ -208,13 +208,14 @@ class ManagerBot:
         """
         roster = self._get_orig_roster()
         for plyr in roster:
-            if plyr['status'].strip() != '':
+            status = plyr['status'].strip()
+            if status != '' and (not ignore_status or 'IL' == status):
                 for idx, lp in enumerate(self.lineup):
                     if lp['player_id'] == plyr['player_id']:
                         self.logger.info(
                             "Moving {} out of the starting lineup because "
                             "they are not available ({})".format(
-                                plyr['name'], plyr['status']))
+                                plyr['name'], status))
                         del self.lineup[idx]
                         break
 
