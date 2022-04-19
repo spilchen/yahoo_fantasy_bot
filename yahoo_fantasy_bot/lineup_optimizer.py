@@ -148,6 +148,7 @@ class GeneticAlgorithm:
         self.pbar.update(generation + 1)
 
     def _log_population(self):
+        self.logger.info(f"{len(self.population)} lineups constructed for initial population")
         for i, lineup in enumerate(self.population):
             self._log_lineup("Initial Population " + str(i), lineup)
 
@@ -196,6 +197,7 @@ class GeneticAlgorithm:
             'random' will generate totally random lineups.
         :return: built PlayerSelector
         """
+        self.logger.info(f"Setting up player selection of {len(self.ppool.index)} players")
         selector = roster.PlayerSelector(self.ppool)
         if gen_type == 'pct_own':
             selector.set_descending_categories([])
@@ -255,6 +257,7 @@ class GeneticAlgorithm:
         for plyr in selector.select():
             fit = False
             if len(self.population) == max_lineups:
+                self.logger.info(f"Stopping lineup generation, reached {max_lineups} lineups")
                 return
             if plyr[self.player_id_col] in self.locked_ids:
                 continue
@@ -269,6 +272,7 @@ class GeneticAlgorithm:
                 lineup = copy.deepcopy(self.seed_lineup)
                 lineups.append(lineup)
                 self._fit_plyr_to_lineup(plyr, lineup)
+        self.logger.info(f"Finished lineup generation, reached {len(self.population)} complete lineups and {len(lineups)} total lineups")
 
     def _remove_from_pop(self, lineup):
         for i, p in enumerate(self.population):

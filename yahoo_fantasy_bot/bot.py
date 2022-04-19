@@ -457,7 +457,7 @@ class ManagerBot:
         :return: Player pool
         :rtype: DataFrame
         """
-        avail_plyrs = self.ppool[self.ppool['percent_owned'] > 10]
+        avail_plyrs = self.ppool[self.ppool['percent_owned'] >= int(self.cfg['LineupOptimizer']['minPctOwned'])]
         return avail_plyrs[avail_plyrs['status'] == '']
 
     def _get_locked_players_list(self):

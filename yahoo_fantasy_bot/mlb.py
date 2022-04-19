@@ -156,7 +156,7 @@ class Builder:
                 sea_g = self._num_games_for_teams(team_abbrevs, False)
                 df = df.assign(SEASON_G=pd.Series(sea_g, index=df.index))
             roster_type = [roster_type] * len(df.index)
-            df = df.assign(roster_type=pd.Series(roster_type, index=df.index))
+            df = df.assign(roster_type=pd.Series(roster_type, index=df.index, dtype="object"))
 
             # Filter out some of the batting categories from pitchers
             if roster_type == 'P':
