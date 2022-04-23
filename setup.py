@@ -7,7 +7,7 @@ def readme():
 
 
 setup(name='yahoo_fantasy_bot',
-      version='1.2.0',
+      version='1.2.1',
       description='A bot that can act as a manager in a Yahoo! fantasy league',
       long_description=readme(),
       url='http://github.com/spilchen/yahoo_fantasy_bot',

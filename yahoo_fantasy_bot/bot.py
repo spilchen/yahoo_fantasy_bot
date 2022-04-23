@@ -241,6 +241,15 @@ class ManagerBot:
                         del self.lineup[idx]
                         break
 
+    def remove_excluded_players(self):
+        """Remove any players from the lineup that are on the excluded list"""
+        for excluded_plyr_name in self._get_exclude_players_list():
+            for i, p in enumerate(self.lineup):
+                if p['name'] == excluded_plyr_name:
+                    self.logger.info(f"Excluding {excluded_plyr_name} from lineup")
+                    del self.lineup[i]
+                    break
+
     def load_league_statics(self):
         """Load static settings for the league.
 

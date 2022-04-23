@@ -30,6 +30,7 @@ class Driver(object):
         self.bot.pick_injury_reserve()
         self.bot.move_non_available_players(self.ignore_status)
         self.bot.move_recovered_il_to_bench()
+        self.bot.remove_excluded_players()
         if self.full:
             print("Optimizing full lineup using available free agents")
             self.bot.optimize_lineup_from_free_agents()
