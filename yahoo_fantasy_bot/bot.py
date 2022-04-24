@@ -150,6 +150,8 @@ class ManagerBot:
         for plyr_name in self._get_locked_players_list():
             if plyr_name not in lineup_names:
                 plyr_from_pool = self.ppool[self.ppool['name'] == plyr_name]
+                if len(plyr_from_pool.index) == 0:
+                    continue
                 bench.append(plyr_from_pool.iloc(0)[0])
                 if len(bench) == self.lg_statics.bn_spots:
                     self.bench = bench
@@ -248,6 +250,11 @@ class ManagerBot:
                 if p['name'] == excluded_plyr_name:
                     self.logger.info(f"Excluding {excluded_plyr_name} from lineup")
                     del self.lineup[i]
+                    break
+            for i, p in enumerate(self.bench):
+                if p['name'] == excluded_plyr_name:
+                    self.logger.info(f"Excluding {excluded_plyr_name} from bench")
+                    del self.bench[i]
                     break
 
     def load_league_statics(self):
