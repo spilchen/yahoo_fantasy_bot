@@ -753,6 +753,19 @@ class RosterChanger:
             print("Drop " + plyr['name'])
             if self._continue_with_yahoo():
                 self.tm.drop_player(plyr['player_id'])
+        # Go through all of the drops and specifically drop anyone that is on
+        # the IR.  We don't pair those up with adds in case someone else has to
+        # go to the IR.
+        i = 0
+        while i < len(self.drops):
+            plyr = self.drops[i]
+            if plyr['selected_position'] in ['IL', 'IR']:
+                print("Drop " + plyr['name'])
+                if self._continue_with_yahoo():
+                    self.tm.drop_player(plyr['player_id'])
+                del self.drops[i]
+            else:
+                i += 1
 
     def _apply_player_adds_and_drops(self):
         while len(self.drops) != len(self.adds):
