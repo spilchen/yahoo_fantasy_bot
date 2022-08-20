@@ -102,7 +102,7 @@ class ManagerBot:
     :param cfg: Config file
     :param reset_cache: Set to True, if the cache files need to be removed first
     """
-    def __init__(self, cfg, reset_cache):
+    def __init__(self, cfg, reset_cache, ignore_status):
         self.logger = logging.getLogger()
         self.cfg = cfg
         self.sc = OAuth2(None, None, from_file=cfg['Connection']['oauthFile'])
@@ -126,6 +126,7 @@ class ManagerBot:
         self.injury_reserve = []
         self.opp_sum = None
         self.opp_team_name = None
+        self.ignore_status = ignore_status
 
         self.init_prediction_builder()
         self.score_comparer = ScoreComparer(self.cfg, self.scorer,
@@ -144,15 +145,17 @@ class ManagerBot:
         # We'll pick the bench spots by picking players not in your lineup or
         # IR.  We first pick from locked players then pick the highest
         # ownership %.
-        lineup_names = [e['name'] for e in self.lineup] + \
+        processed_names = [e['name'] for e in self.lineup] + \
             [e['name'] for e in self.injury_reserve]
 
         for plyr_name in self._get_locked_players_list():
-            if plyr_name not in lineup_names:
+            if plyr_name not in processed_names:
                 plyr_from_pool = self.ppool[self.ppool['name'] == plyr_name]
                 if len(plyr_from_pool.index) == 0:
                     continue
                 bench.append(plyr_from_pool.iloc(0)[0])
+                # Ensure we don't pick this player again when we go through the pool
+                processed_names.append(plyr_name)
                 if len(bench) == self.lg_statics.bn_spots:
                     self.bench = bench
                     return
@@ -161,7 +164,7 @@ class ManagerBot:
                                             ascending=False)
         for plyr in top_owners.iterrows():
             p = plyr[1]
-            if p['name'] not in lineup_names:
+            if p['name'] not in processed_names:
                 self.logger.info("Adding {} to bench ({}%)...".format(
                     p['name'], p['percent_owned']))
                 bench.append(p)
@@ -202,7 +205,7 @@ class ManagerBot:
             self.bench.append(plyr_from_pool.iloc(0)[0])
         self.injury_reserve = ir
 
-    def move_non_available_players(self, ignore_status):
+    def move_non_available_players(self):
         """Remove any player that has a status (e.g. DTD, SUSP, etc.).
 
         If the player is important enough, they will be added back to the bench
@@ -211,7 +214,7 @@ class ManagerBot:
         roster = self._get_orig_roster()
         for plyr in roster:
             status = plyr['status'].strip()
-            if status != '' and (not ignore_status or 'IL' == status):
+            if status != '' and (not self.ignore_status or status.startswith('IL')):
                 for idx, lp in enumerate(self.lineup):
                     if lp['player_id'] == plyr['player_id']:
                         self.logger.info(
@@ -393,7 +396,7 @@ class ManagerBot:
             avail_bench = []
             unavail_bench = []
             for p in self.bench:
-                if p.status == '':
+                if p.status == '' or (self.ignore_status and not p.status.startswith('IL')):
                     avail_bench.append(p)
                 else:
                     unavail_bench.append(p)
@@ -413,12 +416,18 @@ class ManagerBot:
         """
         if len(self.bench) == 0:
             return
+        # Helper to filter the players
+        def is_included(plyr):
+            if self.ignore_status:
+                return plyr['status'] == '' or not plyr['status'].startswith('IL')
+            return plyr['status'] == ''
 
-        optimizer_func = self._get_lineup_optimizer_function()
-        ppool = pd.DataFrame(data=self.bench, columns=self.bench[0].index)
-        ldf = pd.DataFrame(data=self.lineup, columns=self.lineup[0].index)
+        ppool = pd.DataFrame(
+            data=[e for e in self.bench if is_included(e)], columns=self.bench[0].index)
+        ldf = pd.DataFrame(
+            data=[e for e in self.lineup if is_included(e)], columns=self.lineup[0].index)
         ppool = pd.concat([ppool, ldf], ignore_index=True, sort=False)
-        ppool = ppool[ppool['status'] == '']
+        optimizer_func = self._get_lineup_optimizer_function()
         new_lineup = optimizer_func(self.cfg, self.score_comparer,
                                     self.my_team_bldr, ppool, [])
         if new_lineup:

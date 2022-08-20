@@ -231,7 +231,6 @@ class GeneticAlgorithm:
         """
         fit = False
         try:
-            assert(plyr['status'] == '')
             plyr['selected_position'] = np.nan
             lineup = self.roster_bldr.fit_if_space(lineup, plyr)
             fit = True

@@ -16,11 +16,10 @@ class Driver(object):
     :param reset_cache: True if the cache files should be removed before running
     """
     def __init__(self, cfg, dry_run, full, prompt, reset_cache, ignore_status):
-        self.bot = bot.ManagerBot(cfg, reset_cache)
+        self.bot = bot.ManagerBot(cfg, reset_cache, ignore_status)
         self.dry_run = dry_run
         self.full = full
         self.prompt = prompt
-        self.ignore_status = ignore_status
 
     def run(self):
         print("Evaluating trades")
@@ -28,7 +27,7 @@ class Driver(object):
                                  prompt=self.prompt)
         print("Adjusting lineup for player status")
         self.bot.pick_injury_reserve()
-        self.bot.move_non_available_players(self.ignore_status)
+        self.bot.move_non_available_players()
         self.bot.move_recovered_il_to_bench()
         self.bot.remove_excluded_players()
         if self.full:
