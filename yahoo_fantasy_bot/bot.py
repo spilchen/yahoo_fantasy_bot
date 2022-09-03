@@ -143,8 +143,9 @@ class ManagerBot:
             return bench
 
         # We'll pick the bench spots by picking players not in your lineup or
-        # IR.  We first pick from locked players then pick the highest
-        # ownership %.
+        # IR.  We first pick from locked players.  If we are avoiding player
+        # churn, we will pick players from the original roster that weren't
+        # started.  As a fall back, we will then pick the highest ownership %.
         processed_names = [e['name'] for e in self.lineup] + \
             [e['name'] for e in self.injury_reserve]
 
@@ -156,6 +157,21 @@ class ManagerBot:
                 bench.append(plyr_from_pool.iloc(0)[0])
                 # Ensure we don't pick this player again when we go through the pool
                 processed_names.append(plyr_name)
+                if len(bench) == self.lg_statics.bn_spots:
+                    self.bench = bench
+                    return
+
+        if self.cfg['LineupOptimizer']['benchSelection'] == 'avoidChurn':
+            # Sort the original roster by pct owned, so that we favour them first.
+            self.orig_roster.sort(key=lambda p: p['percent_owned'], reverse=True)
+            for p in self.orig_roster:
+                if p['name'] in processed_names:
+                    continue
+                plyr_from_pool = self.ppool[self.ppool['name'] == p['name']]
+                if len(plyr_from_pool.index) == 0:
+                    continue
+                bench.append(plyr_from_pool.iloc(0)[0])
+                processed_names.append(p['name'])
                 if len(bench) == self.lg_statics.bn_spots:
                     self.bench = bench
                     return
@@ -474,6 +490,7 @@ class ManagerBot:
         self.lineup = lineup
         self.bench = bench
         self.injury_reserve = ir
+        self.orig_roster = yahoo_roster
 
     def _get_filtered_pool(self):
         """
